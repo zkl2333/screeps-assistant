@@ -51,5 +51,5 @@
 
 - RCL3/RCL4 的 Tower、Storage 和更高 Extension 数量已由脱敏 fixture 测试验证，但当前房间仍为 RCL2，不能声称已经线上实建。
 - 当前房间没有已建 Road；道路计划与施工门控已上线，但真实 Road 复用要等待更高优先级经济工地释放槽位并建成。
-- 基础经济施工速度仍偏慢。真实观察中 Source Container `(28,23)` 从 `4798/5000` 到建成约用了 212 tick；这证明存在施工吞吐瓶颈，但尚不能单凭该样本断定是 Builder 数量、取能、运输、路程还是任务调度中的哪一项。
-- 后续优化应先采集 Builder 取能等待、有效建造 tick、运输供给、行走距离和 Source Container 溢出，再根据证据修改资源物流或人口策略。
+- 基础经济施工瓶颈已在 `economy-efficiency.md` 中完成 E0–E4 验证和修复：Source Container 稳定窗口达到 4.06 progress/tick，RCL2 Extension 达到 5.35 progress/tick；不再把“施工慢”作为未定位问题。
+- 后续仍需在 RCL2 Energy 容量提升到 350–550 后重新测量身体方案，并继续完整资源物流 R2，而不是把当前 300 Energy 参数直接外推。

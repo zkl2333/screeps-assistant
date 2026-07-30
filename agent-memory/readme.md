@@ -10,7 +10,8 @@
 
 ## 分拆知识库
 
-- [Planner V2 已验证记录](./planner-v2.md)：M0–M5、shard tick 修正、线上最终状态和后续效率瓶颈。
+- [Planner V2 已验证记录](./planner-v2.md)：M0–M5、shard tick 修正和规划线上状态。
+- [RCL2 基础经济与施工效率](./economy-efficiency.md)：E0–E4 基线、身体、就近施工供能、Controller 防回搬、Extension staged delivery 和玩家反馈修正。
 ## 维护规则
 
 1. 只有真实请求成功并核对返回数据后，才能标记为 `verified`。
