@@ -11,7 +11,8 @@
 ## 分拆知识库
 
 - [Planner V2 已验证记录](./planner-v2.md)：M0–M5、shard tick 修正和规划线上状态。
-- [RCL2 基础经济与施工效率](./economy-efficiency.md)：E0–E4 基线、身体、就近施工供能、Controller 防回搬、Extension staged delivery 和玩家反馈修正。
+- [RCL2 基础经济与施工效率](./economy-efficiency.md)：E0–E5 基线、身体、施工供能、Controller 防回搬、Extension staged delivery 和稳定采矿。
+- [Creep 同 Tick 动作效率](./creep-actions.md)：官方 intent 流水线、move 并行、任务切换空 tick 与 one-shot 预移动。
 ## 维护规则
 
 1. 只有真实请求成功并核对返回数据后，才能标记为 `verified`。
