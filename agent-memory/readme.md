@@ -171,3 +171,19 @@
 - 旧文件夹已删除
 - README 和 AGENTS.md 已同步更新
 - 旧 GitHub 远程已删除，新远程为 screeps-bot（需在 GitHub 上手动 rename repo，否则 push 会失败）
+
+## 2026-07-30 制度：Bot 必须经 GitHub Actions 发布
+
+- **状态：** policy
+- **生效日期：** 2026-07-30
+- **适用范围：** `screeps-bot` 正式线上代码（官方服 `main` 分支）
+- **唯一合法路径：** 本地改代码 → Git commit → 推送 GitHub `main` → Actions `Deploy to Screeps` 成功
+- **明确禁止：**
+  - 本地 `npm run push-main` / `push-*` 直接推官方服正式分支
+  - `screeps-assistant` 中 `deploy-github.js` / `screeps-api` / `POST /api/user/code` 直接部署 bot
+  - 先改线上再补仓库，或只改线上不改仓库
+- **允许例外：** simulator / 私服调试；只读查询、监控、拉代码
+- **违规危害：** 线上与仓库漂移、发布不可审计、后续决策基于错误代码源
+- **纠偏要求：** 以 GitHub `main` 为唯一真相源；缺失改动补回仓库后走 Actions 重新发布；违规事件写入本知识库
+- **历史问题：** 此前存在图方便直接 API 部署的行为，已明确判定为无组织无纪律，后续禁止再犯
+- **文档落点：** `screeps-assistant/AGENTS.md`、`screeps-bot/AGENTS.md`
