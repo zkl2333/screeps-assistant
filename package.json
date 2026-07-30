@@ -1,0 +1,21 @@
+{
+  "name": "screeps-auto",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "demo:basic": "node demo-basic.js",
+    "demo:room": "node demo-room.js",
+    "demo:ws": "node demo-websocket.js",
+    "pull": "node pull-code.js",
+    "deploy": "node deploy-github.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "screeps-api": "^2.1.0"
+  }
+}
