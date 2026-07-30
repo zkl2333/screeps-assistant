@@ -187,3 +187,19 @@
 - **纠偏要求：** 以 GitHub `main` 为唯一真相源；缺失改动补回仓库后走 Actions 重新发布；违规事件写入本知识库
 - **历史问题：** 此前存在图方便直接 API 部署的行为，已明确判定为无组织无纪律，后续禁止再犯
 - **文档落点：** `screeps-assistant/AGENTS.md`、`screeps-bot/AGENTS.md`
+
+## 2026-07-30 自动规划现状复核
+
+- **状态：** `verified`
+- **验证方式：** Screeps 只读 HTTP API（`gameRoomObjects`、`userMemoryGet`、`userCodeGet`）+ 本地 `npm run build`
+- **线上样本：** `shard2 / E42N24`，tick `76169927`
+- **房间状态：** Controller 已到 RCL2，progress 50；Spawn1 正常存在。
+- **规划落地：**
+  - source container 工地 2 个：`(28,23)` progress `1345/5000`、`(21,38)` progress `550/5000`
+  - extension 工地 1 个：`(26,23)` progress `41/3000`
+  - 当前没有已建成的 container / extension
+- **人口状态：** 2 miner、3 transporter、2 builder、1 upgrader；Spawn1 队列中有 1 repairer；`Memory.j=false`。
+- **代码接入确认：** 线上 `main` bundle 包含每 20 tick 执行的轻量规划、source container 和 extension 规划；不包含遗留 Overmind `RoomPlanner.buildMissingStructures` / bunker planner 运行代码。
+- **成熟度结论：** 当前只实现 bootstrap 级自动规划（source container + spawn 周边 extension）和固定人数孵化；道路、controller container、tower/storage/link、完整 RCL 布局、扩张与远程采矿等尚未实现。
+- **构建验证：** `screeps-bot` 当前工作树 `npm run build` 成功，仅有旧版 Rollup 插件弃用与 creep-tasks 循环依赖警告。
+- **注意：** 线上 bundle 与当前本地重新构建产物字节哈希不一致；当前工作树存在未提交的构建/配置文件改动，不能仅凭该哈希判定线上业务代码漂移。规划功能标志和实际房间行为一致。
