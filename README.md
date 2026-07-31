@@ -11,7 +11,7 @@ npm install
 npm run demo:basic
 ```
 
-详细说明请查看 [AGENTS.md](./AGENTS.md)。已验证的游戏事实与历史纠偏位于 [`agent-memory/`](./agent-memory/readme.md)。
+详细说明请查看 [AGENTS.md](./AGENTS.md)。跨仓库执行顺序位于 [`PLAN.md`](./PLAN.md)，已验证的游戏事实与历史纠偏位于 [`agent-memory/`](./agent-memory/readme.md)。
 
 ## 相关项目
 
