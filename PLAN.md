@@ -15,36 +15,33 @@ Bot 的总计划见 [`screeps-bot/docs/plan.md`](../screeps-bot/docs/plan.md)。
 
 - 线上目标：`shard2/E42N24`，当前仍按 RCL2 经济链验收。
 - `screeps-bot` 已完成 Planner M0–M5、经济 E0–E5、Creep 动作 A0、交通 A1.0–A1.4、人口 P0。
-- 当前发现的搬运循环已在 bot 工作树修复并通过本地 `npm run check`；尚未提交、推送或线上验收，不能视为已发布。
+- 搬运循环修复已通过 bot 提交 `b5a20b7`、Actions run `30594872816` 和 15 tick 线上验收；当前高优先级转为资源物流 R0。
 - `screeps-assistant` 的历史 API 事实和验收证据位于 [`agent-memory/readme.md`](./agent-memory/readme.md) 及其分拆文件。
 
 ## 当前执行队列
 
-### 1. 搬运循环修复发布
+### 1. 搬运循环修复发布（已完成）
 
 责任仓库：`screeps-bot`。
 
-1. 检查并提交本地 Transporter 取货目标修复。
-2. 推送 GitHub `main`，等待 `Deploy to Screeps` 成功。
-3. 用 `userCodeGet` 或 Actions 产物核对线上 bundle。
-4. 在 `shard2/E42N24` 做 15–30 tick WebSocket 验收：两只以上 Transporter 不得从同一 Controller container 取货后又送回同一目标；Spawn、Extension、Controller 和 Source Container 不得停摆。
-5. 将提交 SHA、Actions run、tick 窗口和结果写回 bot 总计划及本仓库知识库。
+- bot 提交：`b5a20b7`。
+- Actions：`30594872816` 成功。
+- bundle：本地与线上 SHA-256 均为 `22f079f5bc7e568d026ecdd79adff2b64ca95cb94f8f93eba62525575b8a4f86`。
+- 线上：两个窗口共 15 tick 未出现 Controller container 自取自送配对，核心能量链正常。
 
-### 2. 稳定性回归
+### 2. 稳定性回归（已完成）
 
 责任仓库：两仓库协作。
 
 - assistant：补充只读快照和 WebSocket 验收记录，区分 `api.gameTime()` 的 shard 参数，避免把默认 shard0 tick 当成 shard2 证据。
 - bot：保留现有 62 项本地测试、类型检查和构建门禁；线上出现资源守恒、任务循环或 Console 异常时，暂停后续里程碑。
 
-### 3. 下一阶段候选
+### 3. 当前阶段：资源物流 R0
 
-只有第 1、2 项完成后才进入下一项：
-
-1. 资源物流 R0：建立房间资源快照、供需意图和脱敏 fixture，不改变现有 Transporter 优先级。
-2. 人口 P1：等待物流输出稳定的 `TransportCapacityDemand` 后再接入 Transporter 数量规划。
-3. Planner M6：可视化规划编辑和玩家覆盖层，优先级低于稳定经济链。
-4. 物流 R1–R6、人口 P2–P4：按 bot 总计划的依赖顺序推进，不并行扩展跨房、市场或高级建筑。
+1. 建立 `RoomResourceSnapshot`、`SupplyIntent`、`DemandIntent` 和 `LogisticsTask` 纯领域类型。
+2. 增加脱敏 fixture 与资源守恒、重复预订、失败原因测试。
+3. 保持当前 Transporter 线上优先级不变，不提前加入 Tombstone、市场或跨房逻辑。
+4. R0 完成后再评估人口 P1；Planner M6 继续保持低优先级。
 
 ## 发布门禁
 

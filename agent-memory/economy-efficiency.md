@@ -102,3 +102,14 @@
 - RCL2 能量容量随 Extension 建成会从 300 逐步上升；当前身体规划仍使用已验证的 300 Energy 切片，没有为 350–550 Energy 单独优化。
 - 完整物流 R2 数量级预订、长期 Memory 任务、道路建成后的身体比例和 RCL3+ 策略仍未实现。
 - 当前结论不能直接外推到 Tower、Storage、多房间或远程采矿。
+
+## 2026-07-31 Controller Container 自取自送纠偏
+
+- **状态：** `verified`
+- **环境：** `shard2 / E42N24`，RCL2
+- **问题：** Controller Container 建成后，Transporter 的通用取货和送货选择可能同时返回同一 Container，导致从该目标取能后再送回原处。
+- **修复：** Transporter 取货筛选排除当前送货目标；没有其他建筑需求而只剩 Controller 兜底时，也排除 Controller 缓冲本身，同时保留远端 Source Container 到 Controller 的合法路线。
+- **代码：** `screeps-bot` 提交 `b5a20b7`；Actions run `30594872816` 成功。
+- **bundle：** 本地与线上均为 `245817` bytes，SHA-256 `22f079f5bc7e568d026ecdd79adff2b64ca95cb94f8f93eba62525575b8a4f86`。
+- **线上证据：** WebSocket 在 tick `76183323–76183330`、`76183340–76183346` 共采样 15 tick，没有发现同一 Transporter 从 Controller Container 取货后又送回的配对；tick `76183352` 的任务快照显示一只 Transporter 从远端向 Controller Container 送货、一只前往 Source Container 取货、Controller 附近空载 Transporter 保持 idle。
+- **限制：** HTTP `room-objects` 快照可能与 `gameTime` 非原子对应；逐 tick 行为判断优先使用 WebSocket，并用带 `shard2` 参数的 `gameTime` 或事件内 `gameTime` 记录 tick。
