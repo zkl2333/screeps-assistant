@@ -49,3 +49,26 @@
 - 已运行房间级供给、需求、Transporter、现有任务/预订和失效状态观察，并提供只读视觉及 Console 状态。
 - 尚未创建或分配 `LogisticsTask`，也未改变 Transporter 取送优先级；当前 active/reserved 为 `0` 是因为 R2 尚未启用，不代表任务框架失效。
 - Tombstone 回收、非 Energy 策略、运输容量、市场和跨房物流仍属于 R3–R6。
+
+## 2026-07-31 R2 稳定 Energy 预订
+
+- **状态：** `verified`
+- **环境：** 官方服 `shard2 / E42N24`
+- **代码提交：** `screeps-bot@dae2d0e`、`screeps-bot@222bbf9`
+- **Actions：** `30615308971`、`30615984415` 均成功，正式发布只经过 GitHub `main`。
+- **本地门禁：** 86 项测试、TypeScript 类型检查和构建通过。
+- **代码一致性：** 本地与线上 `main` bundle 均为 `287209` bytes，SHA-256 均为 `c77a9d043566cd3d57a4d0efd30428389920cdcf2e66d662cf22535bc09d5429`。
+
+### 线上任务与释放证据
+
+- tick `76188926` 的只读 Memory 捕获两项指向 Spawn1 的 carried delivery：`T_255` 预订 `100`、`T_330` 预订 `58`；active `2`、reserved `158`、duplicate `0`，失败计数全部为 `0`。
+- 该窗口由 Miner 自然孵化产生 Spawn 缺口，没有通过 Console、Memory 写入或其他人工游戏操作制造需求。
+- 后续 tick `76188981–76189049` 共 69 tick：核心 Spawn/Extension Energy 为 `550/550`，Controller progress `18421 -> 18555`，CPU 平均 `8.79`、峰值 `17`；Console 只有周期交通摘要，没有异常。
+- tick `76189079` 再查 `Memory.rooms.E42N24.resourceLogistics`：tasks `[]`、active/reserved/duplicate 均为 `0`、失败计数均为 `0`；三只 Transporter 的 `logisticsTaskKey` / `logisticsTaskSignature` 均不存在，证明预订已释放。
+
+### R2 能力边界
+
+- 当前运行链持久化 Memory v1 任务与单 tick 统计；稳定 Energy 任务覆盖 Source Container、Storage、允许取能 Link、Spawn/Extension、Tower 和 Controller Buffer。
+- 已携带 Energy 的旧任务 Transporter 会直接生成 delivery 预订；已取货任务不会被紧急需求抢占，未取货低优先级任务可以被抢占。
+- 本次线上自然窗口验证了 carried delivery、Spawn 恢复和预订释放，没有出现新的稳定 Source pickup 样本。供给库存上限、多 Transporter 去重和 pickup 转换目前由 86 项本地测试中的 R2 fixture 覆盖。
+- Tombstone、Ruin、Dropped Resource 评分仍属于 R3；非 Energy、运输容量和跨房物流仍属于 R4–R6。

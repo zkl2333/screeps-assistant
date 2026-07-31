@@ -14,8 +14,8 @@ Bot 的总计划见 [`screeps-bot/docs/plan.md`](../screeps-bot/docs/plan.md)。
 ## 当前状态
 
 - 线上目标：`shard2/E42N24`，当前仍按 RCL2 经济链验收。
-- `screeps-bot` 已完成 Planner M0–M5、经济 E0–E5、Creep 动作 A0、交通 A1.0–A1.4、人口 P0、资源物流 R0–R1。
-- 资源物流 R1 及其线上回归修复已通过三个 Actions run、最终 bundle 哈希核对和 30 tick 无错误窗口；当前高优先级转为 R2 稳定 Energy 供需与任务预订。
+- `screeps-bot` 已完成 Planner M0–M5、经济 E0–E5、Creep 动作 A0、交通 A1.0–A1.4、人口 P0、资源物流 R0–R2。
+- 资源物流 R2 已通过两次 Actions、最终 bundle 哈希核对、真实 carried delivery 和释放窗口；当前高优先级转为 R3 临时机会资源回收。
 - `screeps-assistant` 的历史 API 事实和验收证据位于 [`agent-memory/readme.md`](./agent-memory/readme.md) 及其分拆文件。
 
 ## 当前执行队列
@@ -52,12 +52,18 @@ Bot 的总计划见 [`screeps-bot/docs/plan.md`](../screeps-bot/docs/plan.md)。
 - 初始验收发现 task/Traveler RoomPosition 异常并暂停；最终修复 Traveler 耗尽 path 后，30 tick 无 Console 错误，CPU 平均 `4.53`、峰值 `12`，Controller progress `10614 → 10670`。
 - 连续 10 tick 均解析出 `可取` / `缺能` RoomVisual；`resourceLogistics` Memory 前后均不存在，任务与 Transporter 行为未被观察器修改。
 
-### 5. 当前阶段：资源物流 R2
+### 5. 资源物流 R2（已完成）
 
-1. 基于 R1 快照生成稳定 Energy `SupplyIntent` 和 `DemandIntent`。
-2. 建立数量级 `LogisticsTask` 预订，严格受供给库存、需求缺口和 Transporter 容量约束。
-3. 完成、死亡、目标消失、容量变化或超时后释放预订；紧急 Spawn/Extension 需求可抢占尚未取货的低优先级任务。
-4. 首轮只覆盖当前 RCL2 稳定 Energy 链，不加入 Tombstone、市场、非 Energy 或跨房逻辑；人口 P1 继续等待 R5 容量接口。
+- bot 提交 `dae2d0e`、`222bbf9`；Actions run `30615308971`、`30615984415` 成功。
+- 86 项测试、类型检查和构建通过；本地与线上 bundle 均为 `287209` bytes，SHA-256 均为 `c77a9d043566cd3d57a4d0efd30428389920cdcf2e66d662cf22535bc09d5429`。
+- tick `76188926` 捕获两项 Spawn carried delivery，预订 `100 + 58`、重复和失败为 0；tick `76189079` 任务、预订和 Creep 物流键均释放，核心 Energy 为 `550/550`。
+
+### 6. 当前阶段：资源物流 R3
+
+1. 为 Tombstone、Ruin 和 Dropped Resource 建立临时资源价值评分。
+2. 评分考虑资源数量、距离、剩余时间、送货成本和稳定物流机会成本。
+3. 临时对象消失或来不及回收时释放任务，不修改永久道路和长期 Transporter 人口。
+4. 保持 R2 的 Spawn/Source 稳定链优先；人口 P1 继续等待 R5 容量接口。
 
 ## 发布门禁
 
