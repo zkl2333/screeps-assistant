@@ -43,3 +43,10 @@
 2. 不要盲目把所有动作都重复调用。官方流水线中存在覆盖关系，且资源/容量检查使用 tick 开始状态。
 3. 当前只优化经济角色的 move + action 和任务切换；攻击、治疗、拆除等战斗组合需要单独设计和测试。
 4. 小修复默认采用 15–30 tick 定点验收；只有大改、异常或争议时才使用长窗口。
+
+## 2026-07-31 任务与 Traveler 坐标纠偏
+
+- R1 线上验收捕获 Transporter 的 `Invalid arguments in RoomPosition constructor`。统一 `runAssignedTask` 现在会在 creep-tasks 反序列化前校验 task target、`nextPos` 和 parent 链；损坏 proto 会被清空并重新分配。
+- 首轮 task 防护上线后另一只 Transporter 仍复现，证明不能把“未再看到一次”当作根因证据。最终定位为 Traveler 消费最后一个 path 字符后仍解析空串。
+- Traveler 现在只接受 `1–8` 方向；耗尽或损坏 path 会删除并返回 `ERR_NO_PATH`，下一 tick 重算，不再构造 `NaN` 坐标。
+- 最终提交 `01b6dc4`、Actions run `30598468246`；tick `76184542–76184571` 的 30 tick 窗口未再出现 RoomPosition 或其他 Console 错误。
