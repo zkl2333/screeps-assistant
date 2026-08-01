@@ -50,3 +50,12 @@
 - 首轮 task 防护上线后另一只 Transporter 仍复现，证明不能把“未再看到一次”当作根因证据。最终定位为 Traveler 消费最后一个 path 字符后仍解析空串。
 - Traveler 现在只接受 `1–8` 方向；耗尽或损坏 path 会删除并返回 `ERR_NO_PATH`，下一 tick 重算，不再构造 `NaN` 坐标。
 - 最终提交 `01b6dc4`、Actions run `30598468246`；tick `76184542–76184571` 的 30 tick 窗口未再出现 RoomPosition 或其他 Console 错误。
+
+## 2026-07-31 Controller 外圈停车规划
+
+- **状态：** `verified`；房间 `shard2/E42N24`。
+- 根因是 Controller Container 已满时，遗留 Transporter fallback 仍创建 range 1 的 `goTo Controller`，但投放判断使用 range 2；多个搬运工因此与固定 Upgrader 工作位争抢内圈。
+- 提交 `730fb59` 增加稳定停车位：Controller 距离 4–7，排除墙、道路、规划道路、建筑/工地、Spawn/Source 危险区和其他搬运工已预订位置。存在 Controller 缓冲且没有真实需求时，空载或满载 Transporter 都保留资源并停车；无缓冲的 bootstrap 才在 range 2 投放。
+- GitHub Actions run `30634084261` 成功；线上与本地 bundle 均为 `302724` bytes，SHA-256 `053c25e6644e45497bdb30f1f131951a18fd082c588f3448ed9725b7a0aa89f4`。
+- tick `76193223`：Controller Container `2000/2000` 后，`T_770/T_835/T_990` 分别停到 `(31,29)/(31,32)/(20,36)`，Controller range 为 `6/4/7`，task 均为 null，Traveler stuck 均为 0。
+- tick `76193238`：三个车位、能量和 stuck 状态保持稳定；Controller 内圈无 Transporter。物流需求重新出现时应优先退出停车态恢复配送。

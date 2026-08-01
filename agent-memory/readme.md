@@ -210,3 +210,53 @@
 - **成熟度结论：** 当前只实现 bootstrap 级自动规划（source container + spawn 周边 extension）和固定人数孵化；道路、controller container、tower/storage/link、完整 RCL 布局、扩张与远程采矿等尚未实现。
 - **构建验证：** `screeps-bot` 当前工作树 `npm run build` 成功，仅有旧版 Rollup 插件弃用与 creep-tasks 循环依赖警告。
 - **注意：** 线上 bundle 与当前本地重新构建产物字节哈希不一致；当前工作树存在未提交的构建/配置文件改动，不能仅凭该哈希判定线上业务代码漂移。规划功能标志和实际房间行为一致。
+
+## 2026-08-01 RCL3 线上验收
+
+- **状态：** `verified`（房间结构与运行稳定性）；RCL3 新代码尚未线上验证。
+- **验证方式：** 官方服 `shard2 / E42N24` 的只读 HTTP API（`gameTime`、`gameRoomObjects`、`userMemoryGet`、`userCodeGet`）和约 37 秒 WebSocket 监控。
+- **线上状态：** tick `76204656`，Controller RCL3，progress `16484`；前一次 tick `76204603` 为 `16076`，升级仍在增长。
+- **结构验收：** 10 个 Extension、1 个 Tower（`(36,41)`）、核心能量容量 `800`；Tower `1000/1000`；无 construction site。
+- **经济状态：** 2 Miner、3 Transporter、2 Upgrader；当前线上身体仍为旧方案（Miner `5W1C2M`、Transporter `6C8M`、Upgrader `3W3C4M`），不是本地 RCL3 计划的 `5W1C3M`、`8C8M`、`5W2C4M`。
+- **代码判定：** 线上 `main` bundle 为 `307357` bytes，SHA-256 `05640308e0d127ca5c1f3b0bbe440d0832108f4fce200de471c136132f957e77`；本地未提交 RCL3 bundle 为 `314656` bytes，SHA-256 `8807f12c95c1ccc8cbc5debdb61bcde67f3aaf7b4ef440a25667501c95c36e04`，两者不一致。
+- **Memory 判定：** 线上 `populationV2` 没有 `controllerLevel`、`energyCapacity` 字段，`bodyPlans` 为空，确认本地 RCL3 人口/身体实现尚未发布。
+- **运行稳定性：** WebSocket 约 37 秒 CPU 平均 `4`、峰值 `5`，未捕获异常 Console；资源物流任务无重复、无失败。
+- **结论：** RCL3 房间结构验收通过；RCL3 新 Planner 优先级、身体档位和 Tower 单意图防御逻辑仍待 GitHub Actions 正式发布后重新验收。
+
+## 2026-08-01 RCL3 发布后线上复验
+
+- **状态：** `verified`（发布、bundle、Memory 和稳定窗口）；自然换代与战时 Tower 分支仍待真实样本。
+- **发布：** `screeps-bot` commit `d5972f5` 推送到 GitHub `main`；Actions `Deploy to Screeps` run `30682131591` 成功。
+- **代码一致性：** 线上 `main` 与本地 `dist/main.js` 逐字节一致，均为 `314656` bytes，SHA-256 `8807f12c95c1ccc8cbc5debdb61bcde67f3aaf7b4ef440a25667501c95c36e04`。
+- **Memory：** tick `76204781` 的 `populationV2` 已包含 `controllerLevel: 3`、`energyCapacity: 800`、稳定期目标 `2/3/0/2/0`，身体计划为 Miner `5W1C3M`、Transporter `8C8M`、Builder `1W2C2M`、Upgrader `5W2C4M`，计划余量 `+10 Energy/tick`。
+- **运行窗口：** tick `76204805–76204815` 共 10 tick；Controller progress `17339 → 17399`，Tower `1000/1000` 保持不变，核心容量 `800`、无工地、无敌人，CPU 平均 `3.9`、峰值 `5`，无异常 Console，Planner 无冲突。
+- **物流：** 窗口结束时 active tasks `3`、重复任务 `0`、失败任务 `0`；中间出现的 1 次 `destination-full` 在后续快照清零，未形成持续失败。
+- **限制：** 已有旧身体不会被强制销毁；当前实体仍为旧身体，需等待自然替换后验收新身体。当前没有敌人或受伤友军，Tower 攻击/治疗分支仍以脱敏 fixture 为证据，不能称为线上战时验证。
+
+### RCL3 自然换代补充样本
+
+- **状态：** `verified`；官方服 `shard2/E42N24`，tick `76205981`。
+- 已出现新版 Miner `M_55`：`5W1C3M`；三只 Transporter `T_475/T_645/T_955`：`8C8M`；新版 Upgrader `S_780`：`5W2C4M`。
+- 同时仍有旧版 Miner `M_725` 和 Upgrader `S_620`，符合“不强制销毁、自然替换”的发布边界；目标 `2/3/0/2/0`、队列为空、emergency=false。
+- Controller progress `22685/45000`，距离 RCL4 约 `22315`；Storage 规划锚点 `(37,40)` 当前无对象、无冲突，适合提前开展 RCL4 就绪设计。
+
+## 2026-08-01 RCL4 提前就绪发布后 RCL3 回归
+
+- **状态：** `verified-pre-rcl4`；代码发布、线上 bundle 一致性和 RCL3 回归通过，真实 RCL4 行为待升级后验收。
+- **发布：** `screeps-bot` commit `d45ee90` 已推送 GitHub `main`；Actions `Deploy to Screeps` run `30687354391` 为 `completed/success`，部署步骤成功。
+- **代码一致性：** 线上 `main` 与本地 `dist/main.js` 逐字节一致，均为 `324434` bytes，SHA-256 均为 `78d48cbac3b23e563ce2c44240da80f5bf3be1eda79dcfa31b771442c3d0580a`。
+- **定点快照：** tick `76207116`，Controller RCL3 progress `33385/45000`；Storage 锚点 `(37,40)` 为空，房间无 construction site，Planner `conflicts=[]`。
+- **门控：** `populationV2.controllerLevel=3`、目标 `2/3/0/2/0`；身体计划仍为 Miner `5W1C3M`、Transporter `8C8M`、Builder `1W2C2M`、Upgrader `5W2C4M`。RCL4 身体和施工特例没有在 RCL3 提前触发。
+- **连续窗口：** tick `76207146–76207155` 共 10 tick，Controller progress `33675 → 33760` 单调增长；始终无 Storage、无 Storage 工地、无其他工地、无敌人，Planner 无冲突。
+- **稳定性：** WebSocket CPU 11 个样本平均 `4.36`、峰值 `5`，Console 无日志、结果或错误；窗口结束时资源物流 active tasks `3`、duplicate `0`、failed `0`，所有失败分类均为 `0`。
+- **边界：** 当前证据只能证明正式发布成功且 RCL3 无回归。Storage 优先建造、10 个 RCL4 Extension、RCL4 身体自然换代、`10000 Energy` Storage 保留线、emergency/hostile 解锁和 staged delivery 必须在真实到达 RCL4 后另行取样，不能提前标记为线上行为验收通过。
+
+## 2026-08-01 通用单房导航与物流 N0–N5 最终验收
+
+- **状态：** `verified`；生产算法适用于任意可见自有单房，`shard2/E42N24` 只作为线上样本和回归 fixture，不读取房间名或固定坐标。
+- **功能提交：** `screeps-bot@9f86e81`；验收文档归档提交 `screeps-bot@3371585`。
+- **发布：** GitHub Actions `Deploy to Screeps` run `30696886561`、job `91361168638` 与归档后的 `workflow_dispatch` run `30698182571`、job `91364496095` 均成功；未使用 Screeps 写入 API。
+- **门禁与一致性：** 154 项测试、TypeScript、esbuild 和 `git diff --check` 通过；最终只读拉取的线上 `main` 与本地 bundle 均为 `364129` bytes，SHA-256 均为 `e9e51c52f53a7de56801e4f39fac252626baa20159f36ad02fdb6651dc7fc0fc`，逐字节一致。
+- **能力：** 路线成本从 Terrain、Road、阻挡结构和 Movement Profile 动态派生；物流以“空车 Pickup + 载货多站 Delivery”的有序 manifest 运行；SharedSupplyGuard 防止物流 Pickup 预订被其他普通取能任务同 tick 超额消耗。
+- **线上验收：** 162 tick 稳定性窗口与 141 tick 自然换代窗口中，物流守恒错误、duplicate、failed 和全部失败分类均为 0；捕获 `400/400 Energy`、7 站、路线成本 `39`、装载率 `1.0` 的稳定 Pickup。三个完整 100-tick 交通窗合计 conflict `1.53%`、Miner stuck `0`，短暂 stuck 峰值未形成持续回归。
+- **后续：** R3 Tombstone、Ruin 和 Dropped Resource 回收现在可开始，必须复用该通用路线、manifest 和供给隔离基础；维持现有 Road，不实施 convoy pushing，跨房 Traveler 在远程采矿前另行加固。

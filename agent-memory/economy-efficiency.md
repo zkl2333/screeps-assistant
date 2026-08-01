@@ -103,6 +103,34 @@
 - 完整物流 R2 数量级预订、长期 Memory 任务、道路建成后的身体比例和 RCL3+ 策略仍未实现。
 - 当前结论不能直接外推到 Tower、Storage、多房间或远程采矿。
 
+## 2026-07-31 Miner 产出背压
+
+- **状态：** `verified`；环境 `shard2/E42N24`，RCL2。
+- 部署前 tick `76195085`：Source Container 均 `2000/2000`，矿点附近掉落 Energy 为 `2023 + 4155 + 508`，两个 Miner 仍在执行 `harvest`，属于实际过度开采。
+- 提交 `cb12286`：本地输出余量不足一个 Miner 背包时暂停采集；已有掉落达到 `100` 或本地输出已满时，不再继续 `drop`，保留手中 Energy 等待运输清理。
+- GitHub Actions run `30645622414` 成功；线上与本地 bundle 均为 `304250` bytes，SHA-256 `1b69a7f50d7badfb67ab6101f650cc0bfbda1afe686306c1abf2da00e3ceaf22`。
+- tick `76195259` 部署后：两个 Miner 的 task 均为 `null`，三个 Container 仍满，历史掉落约 `6031`。
+- tick `76195270–76195288`：两个 Miner 持续 `task=null`、stuck `0`；掉落总量 `5897 → 5785`，Container 开始被 Transporter 清理（一个从 `2000` 降至 `1900` 后回升），未观察到背压期间新增掉落。
+
+### 背压边界
+
+- 当前规则针对本地 Source 输出和地面 Energy，不限制 Source 自然再生本身；有真实物流需求且输出恢复至少一个 Miner 背包容量后，Miner 会自动恢复采集。
+- 初次上线前产生的历史掉落不会被删除，只会由 Transporter 按现有物流需求逐步清理。
+
+## 2026-08-01 Upgrader Controller-local energy
+
+- **状态：** `verified`；环境 `shard2/E42N24`，RCL2。
+- **问题：** Upgrader 的旧取能顺序会扫描全房间掉落、废墟和容器，历史 Source 区 Energy 会把它们带离 Controller 工作区。
+- **修复：** 提交 `2f23889` 将 Controller 4 格内的 Container/Storage/Link 作为唯一非 bootstrap 取能区；本地缓冲存在但全空时等待，不再改跑远端 Source；无本地缓冲的 bootstrap 才允许 Controller 附近掉落、附近废墟和 Source 兜底，并清理已有越界取能任务。
+- GitHub Actions run `30650378902` 成功；线上 `main` 与本地 bundle 均为 `307357` bytes，SHA-256 `05640308e0d127ca5c1f3b0bbe440d0832108f4fce200de471c136132f957e77`。
+- tick `76196246` 只读核对：Controller `(27,35)`，Controller Container `(28,37)` 有 `1257` Energy；线上 Memory 中两只 `S_*` 均存在且无异常任务。
+- tick `76196272–76196277`：两只 Upgrader 的任务只在 `upgrade` 与短暂任务切换之间变化，位置保持在 Controller Container/工作位；没有远端容器、掉落或 Source 取能目标。Controller progress `34870 → 34904`。
+
+### Upgrader 边界
+
+- 4 格是 Controller 本地能源边界，使用 Screeps 的 Chebyshev range；远端 Source Container 和 Source 区掉落交给 Transporter。
+- HTTP `room-objects`、Memory 与 `gameTime` 不是原子快照；短窗口行为判断应结合多次采样或 WebSocket，不以单个 tick 的位置推断长期路径。
+
 ## 2026-07-31 Controller Container 自取自送纠偏
 
 - **状态：** `verified`

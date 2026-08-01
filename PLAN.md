@@ -1,6 +1,6 @@
 # Screeps Assistant 执行计划
 
-> 更新时间：2026-07-31。本文是 `screeps-assistant` 与 `screeps-bot` 的协作入口；领域细节和历史证据分别保留在两个仓库的计划文档中。
+> 更新时间：2026-08-01。本文是 `screeps-assistant` 与 `screeps-bot` 的协作入口；领域细节和历史证据分别保留在两个仓库的计划文档中。
 
 ## 仓库分工
 
@@ -13,9 +13,10 @@ Bot 的总计划见 [`screeps-bot/docs/plan.md`](../screeps-bot/docs/plan.md)。
 
 ## 当前状态
 
-- 线上目标：`shard2/E42N24`，当前仍按 RCL2 经济链验收。
-- `screeps-bot` 已完成 Planner M0–M5、经济 E0–E5、Creep 动作 A0、交通 A1.0–A1.4、人口 P0、资源物流 R0–R2。
-- 资源物流 R2 已通过两次 Actions、最终 bundle 哈希核对、真实 carried delivery 和释放窗口；当前高优先级转为 R3 临时机会资源回收。
+- 线上目标：`shard2/E42N24`，已在 RCL3 完成结构、稳定运行与自然换代验收；RCL4 就绪代码已发布，等待真实 `800 → 1300` 过渡样本。
+- `screeps-bot` 已完成 Planner M0–M5、经济 E0–E5、Creep 动作 A0、交通 A1.0–A1.4、人口 P2b、资源物流 R0–R2，以及通用单房导航与物流 N0–N5。
+- N0–N5 已通过 Actions、线上 bundle 逐字节核对和两个合计 303 tick 的物流/交通/CPU/Console 验收；R3 临时机会资源回收的路线、manifest 与供给隔离前置条件已满足。
+- R2c 的 RCL4 Storage reserve 与施工供能已发布，仍需真实 RCL4 Storage 样本；当前优先级为 R3，远程采矿前再加固跨房 Traveler。
 - `screeps-assistant` 的历史 API 事实和验收证据位于 [`agent-memory/readme.md`](./agent-memory/readme.md) 及其分拆文件。
 
 ## 当前执行队列
@@ -58,10 +59,17 @@ Bot 的总计划见 [`screeps-bot/docs/plan.md`](../screeps-bot/docs/plan.md)。
 - 86 项测试、类型检查和构建通过；本地与线上 bundle 均为 `287209` bytes，SHA-256 均为 `c77a9d043566cd3d57a4d0efd30428389920cdcf2e66d662cf22535bc09d5429`。
 - tick `76188926` 捕获两项 Spawn carried delivery，预订 `100 + 58`、重复和失败为 0；tick `76189079` 任务、预订和 Creep 物流键均释放，核心 Energy 为 `550/550`。
 
-### 6. 当前阶段：资源物流 R3
+### 6. 通用单房导航与物流 N0–N5（已完成）
+
+- bot 功能提交 `9f86e81`，验收归档 `3371585`；Actions run `30696886561` 和 `30698182571` 成功。
+- 任意可见自有单房的路线成本由地形、道路、阻挡结构与 Creep 载荷动态计算；Transporter 以一次 Pickup、多站 Delivery 的 manifest 运行。
+- 最终 bundle 为 `364129` bytes，SHA-256 `e9e51c52f53a7de56801e4f39fac252626baa20159f36ad02fdb6651dc7fc0fc`；线上逐字节一致。
+- 两段线上窗口合计 303 tick，物流守恒、重复与失败为 0；已捕获 `400/400 Energy`、7 站的满载任务。详细证据见 bot 的 [`generic-navigation-logistics-plan.md`](../screeps-bot/docs/generic-navigation-logistics-plan.md)。
+
+### 7. 当前阶段：资源物流 R3
 
 1. 为 Tombstone、Ruin 和 Dropped Resource 建立临时资源价值评分。
-2. 评分考虑资源数量、距离、剩余时间、送货成本和稳定物流机会成本。
+2. 评分复用 N 系列的真实路线成本、manifest、数量预订与 SharedSupplyGuard，考虑资源数量、距离、剩余时间、送货成本和稳定物流机会成本。
 3. 临时对象消失或来不及回收时释放任务，不修改永久道路和长期 Transporter 人口。
 4. 保持 R2 的 Spawn/Source 稳定链优先；人口 P1 继续等待 R5 容量接口。
 
