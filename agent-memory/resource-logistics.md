@@ -72,3 +72,34 @@
 - 已携带 Energy 的旧任务 Transporter 会直接生成 delivery 预订；已取货任务不会被紧急需求抢占，未取货低优先级任务可以被抢占。
 - 本次线上自然窗口验证了 carried delivery、Spawn 恢复和预订释放，没有出现新的稳定 Source pickup 样本。供给库存上限、多 Transporter 去重和 pickup 转换目前由 86 项本地测试中的 R2 fixture 覆盖。
 - Tombstone、Ruin、Dropped Resource 评分仍属于 R3；非 Energy、运输容量和跨房物流仍属于 R4–R6。
+
+## 2026-08-01 通用单房导航与物流 N0–N5
+
+- **状态：** `verified`
+- **环境：** 官方服 `shard2 / E42N24`；房间只作为线上样本，生产算法不读取该房间名或固定坐标。
+- **最终代码提交：** `screeps-bot@9f86e81`
+- **验收文档归档提交：** `screeps-bot@3371585`
+- **发布：** 功能提交由 GitHub Actions `Deploy to Screeps` run `30696886561`、job `91361168638` 发布成功；归档提交因 workflow 忽略 `docs/**`，通过同一 workflow 的 `workflow_dispatch` run `30698182571`、job `91364496095` 发布成功。正式发布只经过 GitHub `main` 与 GitHub Actions，未使用 Screeps 写入 API。
+- **本地门禁：** 154 项测试、TypeScript、esbuild 与 `git diff --check` 通过。
+- **代码一致性：** 最终归档发布后重新只读拉取；本地与线上 `main` bundle 均为 `364129` bytes，SHA-256 均为 `e9e51c52f53a7de56801e4f39fac252626baa20159f36ad02fdb6651dc7fc0fc`，逐字节一致。
+
+### 已验证能力
+
+- 任意可见自有单房的导航快照从 Terrain、Road 和阻挡结构动态派生；空载、部分载荷、满载以及 MOVE/CARRY boost 使用真实 fatigue 成本，路线缓存按拓扑与 Movement Profile 失效。
+- 物流按“空车到 Pickup + 载货多站 Delivery”真实路线成本分配；一次 Pickup 可以生成有序 manifest，并保持供给、需求、车辆容量和逐站预订守恒。
+- Transporter 剩余寿命不足以覆盖路线成本、动作数和 5 tick 余量时，任务以 `released/retiring` 交接，不计完成或失败。
+- SharedSupplyGuard 将 `reserved/pickup` 状态的 Pickup 数量作为全房稳定供给边界。Repairer、Upgrader、Builder、Harvester、Transporter fallback、Cleaner `withdrawAll` 和 Link 直传只能使用未预订 Energy；普通 intent 的同 tick 认领在任务 Memory 提前推进后仍保留到结算。
+- 线上竞态证据曾显示物流对 Source Container `(21,38)` 预订 `122` 时，Repairer `X_530` 同时持有无限量 `withdraw`。该证据确认绕过入口存在，但不能事后精确证明更早 tick `76210429` 的单次 `source-empty` 就来自同一目标；最终修复没有更改或掩盖失败定义。
+
+### 最终线上验收
+
+- 稳定性窗口 tick `76211166–76211328`，跨度 162 tick：逐 tick 失败/重复标量和 128 个完整 Memory 快照全部为 0；CPU 平均 `5.259`、峰值 `15`，Controller progress `+1525`，核心 Energy 始终 `800/800`，Console 无异常。
+- 自然换代窗口 tick `76211351–76211492`，跨度 141 tick：114 个完整 Memory 快照保持 manifest/预订守恒、duplicate、failed 和全部失败分类为 0；捕获 `T_115` 的 `400/400 Energy`、7 站、路线成本 `39`、装载率 `1.0` 的稳定 Pickup，没有三车各跑 `50 Energy`。
+- 延迟观察 tick `76211500–76211535` 无失败；tick `76211536` active/reserved/demand 全部归零，证明该多站任务完成并释放干净。
+- 三个完整 100-tick 交通窗合计 moves `1174`、conflicts `18`（`1.53%`）、stuck `102`（`8.69%`）、replans `163`、path CPU `48.539`，Miner stuck 为 0。单窗 stuck 曾短暂到 `14.39%`，后续 83 tick 回落到 `5.02%`、再后 27 tick 为 `3.67%`，未形成持续回归。
+- Creep Memory 无 `pathCosts` 泄漏，7/7 Creep 有 Traveler profile/topology key；最终两个 Source Container 为 `1400/2000`、`1250/2000`，Controller Container 为 `1500/2000`，没有 Source 近满而 Controller Buffer 持续为空。
+
+### 后续边界
+
+- 当前不重铺 Road，也不实现 convoy pushing；现有交通不是持续主瓶颈。
+- 下一阶段优先资源物流 R3（Tombstone、Ruin、Dropped Resource 统一回收）。跨房 Traveler 必须在远程采矿或多房物流前完成加固。
