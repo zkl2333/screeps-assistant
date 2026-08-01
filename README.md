@@ -1,8 +1,8 @@
 # Screeps Assistant
 
-**玩家本人的 Screeps AI 助理**
+**Screeps 外部读取、监控与分析工具**
 
-基于 [`screeps-api`](https://github.com/screepers/node-screeps-api) 的外部 API 工具集，帮助你实时监控、分析游戏状态、辅助决策。
+基于 [`screeps-api`](https://github.com/screepers/node-screeps-api) 的外部工具集，用于读取房间和账号信息、监控运行状态、分析数据与备份线上代码。
 
 ## 快速开始
 
@@ -11,11 +11,11 @@ npm install
 npm run demo:basic
 ```
 
-详细说明请查看 [AGENTS.md](./AGENTS.md)。跨仓库执行顺序位于 [`PLAN.md`](./PLAN.md)，已验证的游戏事实与历史纠偏位于 [`agent-memory/`](./agent-memory/readme.md)。
+详细说明请查看 [AGENTS.md](./AGENTS.md)。工具文档入口位于 [`docs/README.md`](./docs/README.md)，API 读取注意事项位于 [`docs/screeps-api.md`](./docs/screeps-api.md)。
 
 ## 相关项目
 
-- [screeps-bot](https://github.com/zkl2333/screeps-bot) - 游戏 AI 代码仓库
+- [screeps-bot](https://github.com/zkl2333/screeps-bot) - 游戏 AI 代码、设计、计划与验收记录仓库
 
 ## 发布纪律
 
