@@ -68,3 +68,22 @@
 - Respawn Area 是否存在可直接查询“所有者”的专用端点。
 - 客户端重生界面与 HTTP API 之间的同步延迟。
 - 各 shard 的 CPU、tick 延迟、人口和房间状态；这些都是动态事实，做决策前必须重新查询。
+
+## 官方房间统计
+
+- **客户端方法：** `api.gameRoomOverview(room, interval, shard)`
+- **端点：** `GET /api/game/room-overview`
+- **示例：** `npm --silent run api -- room-overview E42N24 8 shard2`
+- `interval=8` 表示每 8 分钟一个数据点，返回最近 64 分钟；`180` 为最近 24 小时，`1440` 为最近 8 天。
+- 返回 `stats`（时间序列）、`totals`（区间总计）和 `statsMax`（区间最大值）。时间序列中的 `endTime` 是官方单调递增标识，不是游戏 tick 或 Unix 时间戳。
+- 官方房间统计包括：`energyHarvested`、`energyConstruction`、`energyCreeps`、`energyControl`、`creepsProduced`、`creepsLost`、`powerProcessed`。
+- `energyConstruction` 是 Creep 建造和维修消耗；`energyCreeps` 是 Spawn 和 Renew 消耗；`energyControl` 表示升级产生的 GCL 进度，不是 Energy 数量。
+- 该工具只读，不向 Screeps 提交游戏操作；官方接口的读取发生在 Bot 外部，不占 Bot 的游戏 CPU。
+
+## 统一只读 CLI
+
+`npm --silent run api -- <command> ...` 是 Agent 调用 Screeps API 的统一入口。默认输出单行 JSON，添加 `--pretty` 可格式化输出。
+
+当前 CLI 白名单覆盖所有已识别的只读 HTTP 方法，分为：基础/认证与历史、地图/房间、无持久化副作用的名称检查、市场与 Shard、排行榜/赛季、用户读取、Memory/Segment、消息读取、实验 PVP/核弹/Warpath 和 Seasonal World scoreboard。具体命令和参数以根目录 `AGENTS.md` 及 `npm --silent run api -- --help` 为准。
+
+名称生成、名称检查和 `map-stats` 使用官方 `POST` 端点，但它们不修改持久化游戏状态，因此纳入只读 CLI。CLI 不接受任意客户端方法名，不开放原始 `authQueryToken`、`req()`、`userCodeSet`、`userMemorySet`、`userMemorySegmentSet`、`userConsole`、建筑/旗帜/Intent、重生、市场写入、消息发送/标记已读或装饰修改等副作用接口。`token-info` 只输出当前 Token 的权限元数据，始终删除 Token 字段。

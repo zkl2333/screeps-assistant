@@ -4,9 +4,10 @@
   "description": "Screeps Assistant — 玩家本人的 AI 助理",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test screeps-api-cli.test.js",
     "demo:basic": "node demo-basic.js",
     "demo:room": "node demo-room.js",
+    "api": "node screeps-api-cli.js",
     "demo:ws": "node demo-websocket.js",
     "pull": "node pull-code.js",
     "deploy": "node deploy-github.js"
