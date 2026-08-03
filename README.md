@@ -24,6 +24,10 @@ npm --silent run api -- user-rooms USER_ID
 npm --silent run api -- --help
 ```
 
+> ⚠️ **查房间/历史必须指定 `shard`**：zkl2333 的活跃房间在 **shard2**（`room-objects`、`room-status`、`room-overview`、`room-history`、`memory-get rooms.*` 等命令都要带上 `shard2` 参数，否则会落到默认分片，返回空数据或别的分片内容）。示例：`npm --silent run api -- room-objects E42N24 shard2`。
+>
+> `room-history` 的 `tick` 需使用**该 shard 自己的游戏时间**（先 `npm --silent run api -- game-time shard2` 查询），API 会自动对齐到 100 的倍数；历史只保留最近若干天，tick 太旧会 404。
+
 CLI 已覆盖 `screeps-api` HTTP 客户端中的完整只读查询面：基础/认证、地图/房间、市场、Shard、排行榜/赛季、用户、Memory/Segment、消息读取、实验战斗数据和代码读取。完整命令与参数见 [AGENTS.md](./AGENTS.md)，`--help` 输出命令摘要。
 
 `interval` 通常支持 `8`、`180`、`1440` 分钟；市场 `resource`、地图 `stat` 和排行榜 `mode` 必须使用官方允许值。官方房间统计输出 `stats`、`totals` 和 `statsMax`。
