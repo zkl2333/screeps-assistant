@@ -9,6 +9,7 @@
 | [`../README.md`](../README.md) | 工具用途、安装与命令入口 |
 | [`../AGENTS.md`](../AGENTS.md) | 凭证安全、只读边界和操作规则 |
 | [`screeps-api.md`](./screeps-api.md) | 房间、Memory、Shard、WebSocket 等读取接口的用法和字段注意事项 |
+| [`reference-projects.md`](./reference-projects.md) | 参考项目清单：跨设备重新拉取的仓库地址、活跃度与用途 |
 | 源码与脚本 | 房间信息读取、监控、分析和代码备份工具 |
 
 ## 不放在本仓库
