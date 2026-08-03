@@ -1,21 +1,8 @@
 # Screeps 参考项目清单
 
-> 用途：跨设备重新拉取参考代码的统一清单。本地统一存放于 `/opt/data/screeps/参考项目/`。
+> 用途：跨设备重新拉取参考代码的统一清单。本地统一存放于 `../参考项目/`。
 > 更新时间：2026-08-03。拉取/增删项目时同步更新本文件。
 
-## 拉取命令
-
-```bash
-mkdir -p /opt/data/screeps/参考项目 && cd /opt/data/screeps/参考项目
-
-git clone https://github.com/bencbartlett/Overmind.git overmind
-git clone https://github.com/grgisme/OvermindForged.git overmind-forged
-git clone https://github.com/stoleas/overmind.git overmind-stoleas
-git clone https://github.com/Mirroar/hivemind.git hivemind
-git clone https://github.com/The-International-Screeps-Bot/The-International-Open-Source.git the-international
-git clone https://github.com/screepers/node-screeps-api.git node-screeps-api
-git clone https://github.com/bencbartlett/creep-tasks.git creep-tasks
-```
 
 ## 项目清单
 
