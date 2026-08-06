@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
 const test = require('node:test');
 
 const cli = require('./screeps-api-cli');
@@ -43,6 +44,67 @@ test('shared options parse without enabling arbitrary options', () => {
 
 test('unknown commands fail before loading credentials', async () => {
   await assert.rejects(cli.runCommand('not-a-command', []), /Unknown command/);
+});
+
+test('watch options allow only supported channels and values', () => {
+  assert.deepEqual(cli.parseWatchArgs(['cpu', '--shard', 'shard2', '--count', '2']), {
+    channel: 'cpu',
+    target: undefined,
+    shard: 'shard2',
+    count: 2,
+    pretty: false
+  });
+  assert.deepEqual(cli.parseWatchArgs(['memory', 'creeps.预定_985', 'shard2', '--pretty']), {
+    channel: 'memory',
+    target: 'creeps.预定_985',
+    shard: 'shard2',
+    count: undefined,
+    pretty: true
+  });
+  assert.throws(() => cli.parseWatchArgs(['not-a-channel']), /channel/);
+  assert.throws(() => cli.parseWatchArgs(['cpu', '--unknown', 'value']), /Unknown option/);
+});
+
+test('watch cpu connects, subscribes, and emits JSON events', async () => {
+  const socket = new EventEmitter();
+  let subscribed;
+  socket.connect = async () => {};
+  socket.subscribeUserCpu = async callback => {
+    subscribed = callback;
+  };
+  const output = [];
+
+  const watching = cli.runWatch(['cpu', '--count', '1'], { socket }, {
+    write: value => output.push(value)
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  subscribed({ type: 'user', path: 'cpu', data: { cpu: 12, memory: 4096 } });
+  await watching;
+
+  assert.deepEqual(output, [
+    '{"type":"user","path":"cpu","data":{"cpu":12,"memory":4096}}\n'
+  ]);
+});
+
+test('watch memory uses the requested path and shard', async () => {
+  const socket = new EventEmitter();
+  let subscription;
+  socket.connect = async () => {};
+  socket.subscribeUserMemory = async (path, shard, callback) => {
+    subscription = { path, shard, callback };
+  };
+  const output = [];
+
+  const watching = cli.runWatch(['memory', 'creeps.预定_985', 'shard2', '--count', '1'], { socket }, {
+    write: value => output.push(value)
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  subscription.callback({ type: 'user', path: 'memory/shard2/creeps.预定_985', data: '{}' });
+  await watching;
+
+  assert.deepEqual(subscription.path, 'creeps.预定_985');
+  assert.deepEqual(subscription.shard, 'shard2');
+  assert.equal(output.length, 1);
 });
 
 test('every documented command has a working explicit route', async () => {

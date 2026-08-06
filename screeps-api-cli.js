@@ -13,6 +13,7 @@ const ROOM_STATS = new Set(Object.values(RoomStats));
 const MAP_STATS = new Set([...ROOM_STATS, 'owner0', 'claim0']);
 const MARKET_RESOURCES = new Set(Object.values(MarketResources));
 const LEADERBOARD_MODES = new Set(Object.values(LeaderboardModes));
+const WATCH_CHANNELS = new Set(['cpu', 'console', 'code', 'resources', 'room', 'memory', 'map-visual']);
 
 const COMMAND_HELP = [
   ['version', 'Screeps server version information'],
@@ -105,6 +106,95 @@ function parseOptions(argv) {
   }
 
   return { positional, options };
+}
+
+function parseWatchArgs(argv) {
+  const positional = [];
+  const options = { pretty: false };
+  const supported = new Set(['shard', 'count', 'server', 'app']);
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === '--pretty') {
+      options.pretty = true;
+      continue;
+    }
+    if (!token.startsWith('--')) {
+      positional.push(token);
+      continue;
+    }
+    const option = token.slice(2);
+    if (!supported.has(option)) throw new Error(`Unknown option: ${token}`);
+    options[option] = readValue(argv, index, token);
+    index += 1;
+  }
+
+  const channel = positional[0];
+  if (!WATCH_CHANNELS.has(channel)) {
+    throw new Error(`channel must be one of: ${[...WATCH_CHANNELS].join(', ')}`);
+  }
+  const target = positional[1];
+  const shard = options.shard ?? positional[2];
+  if (channel === 'room') roomName(target);
+  if (channel === 'memory' && !target) throw new Error('Missing value for memory path');
+  if (channel === 'map-visual' && target) throw new Error('map-visual does not accept a target');
+  const count = options.count === undefined ? undefined : integerValue(options.count, 'count', { min: 1 });
+  const result = { channel, target, shard, count, pretty: options.pretty };
+  if (options.server !== undefined) result.server = options.server;
+  if (options.app !== undefined) result.app = options.app;
+  return result;
+}
+
+function writeWatchEvent(event, output, pretty) {
+  output.write(JSON.stringify(event, null, pretty ? 2 : 0) + '\n');
+}
+
+async function runWatch(argvOrOptions, clientOrSocket, output = process.stdout) {
+  const options = Array.isArray(argvOrOptions) ? parseWatchArgs(argvOrOptions) : argvOrOptions;
+  const socket = clientOrSocket && clientOrSocket.socket ? clientOrSocket.socket : clientOrSocket;
+  if (!socket || typeof socket.connect !== 'function') throw new Error('WebSocket client is unavailable');
+
+  let seen = 0;
+  let finished = false;
+  let resolveDone;
+  let rejectDone;
+  const done = new Promise((resolve, reject) => {
+    resolveDone = resolve;
+    rejectDone = reject;
+  });
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    if (typeof socket.disconnect === 'function') socket.disconnect();
+    resolveDone();
+  };
+  const onEvent = event => {
+    if (finished) return;
+    writeWatchEvent(event, output, options.pretty);
+    seen += 1;
+    if (options.count !== undefined && seen >= options.count) finish();
+  };
+  const onError = error => {
+    if (finished) return;
+    finished = true;
+    rejectDone(error instanceof Error ? error : new Error(String(error)));
+  };
+
+  if (typeof socket.on === 'function') socket.on('error', onError);
+  try {
+    await socket.connect();
+    if (options.channel === 'cpu') await socket.subscribeUserCpu(onEvent);
+    else if (options.channel === 'console') await socket.subscribeUserConsole(onEvent);
+    else if (options.channel === 'code') await socket.subscribeUserCode(onEvent);
+    else if (options.channel === 'resources') await socket.subscribeUserResource(onEvent);
+    else if (options.channel === 'room') await socket.subscribeRoom(options.target, options.shard, onEvent);
+    else if (options.channel === 'memory') await socket.subscribeUserMemory(options.target, options.shard, onEvent);
+    else if (options.channel === 'map-visual') await socket.subscribeMapVisual(options.shard, onEvent);
+    await done;
+  } finally {
+    if (typeof socket.off === 'function') socket.off('error', onError);
+    if (!finished && typeof socket.disconnect === 'function') socket.disconnect();
+  }
 }
 
 function positionalOrOption(options, positional, option, index) {
@@ -432,6 +522,15 @@ async function runCommand(command, argv, client) {
 function printHelp() {
   console.log('Usage: npm run api -- <command> [arguments] [options]');
   console.log('');
+  console.log('WebSocket watch:');
+  console.log('  watch cpu [--count N] [--shard shard2]');
+  console.log('  watch console|code|resources');
+  console.log('  watch room <room> [shard]');
+  console.log('  watch memory <path> [shard]');
+  console.log('  watch map-visual [--shard shard2]');
+  console.log('  Channels: cpu, console, code, resources, room, memory, map-visual');
+  console.log('  --count N exits after N events; without it, watch runs until Ctrl-C');
+  console.log('');
   console.log('Read-only commands:');
   for (const [command, description] of COMMAND_HELP) {
     console.log(`  ${command.padEnd(28)} ${description}`);
@@ -448,6 +547,15 @@ async function main(argv = process.argv.slice(2)) {
   const [command, ...args] = argv;
   if (!command || command === '--help' || command === '-h' || command === 'help') {
     printHelp();
+    return;
+  }
+
+  if (command === 'watch') {
+    const options = parseWatchArgs(args);
+    const api = await ScreepsHttpClient.fromConfig(options.server || 'main', {
+      app: options.app || 'default'
+    });
+    await runWatch(options, api);
     return;
   }
 
@@ -470,7 +578,10 @@ module.exports = {
   MARKET_RESOURCES,
   READ_ONLY_COMMANDS,
   ROOM_STATS,
+  WATCH_CHANNELS,
   VALID_INTERVALS,
   parseOptions,
-  runCommand
+  parseWatchArgs,
+  runCommand,
+  runWatch
 };
