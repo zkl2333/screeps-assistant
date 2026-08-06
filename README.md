@@ -11,28 +11,27 @@ npm install
 npm run demo:basic
 ```
 
-统一只读 CLI 入口：
+官方 CLI 入口：
 
 ```bash
-npm --silent run api -- room-overview E42N24 8 shard2
-npm --silent run api -- room-status E42N24 shard2
-npm --silent run api -- room-objects E42N24 shard2
-npm --silent run api -- memory-get rooms.E42N24 shard2
-npm --silent run api -- map-stats E42N24,E42N25 owner0 shard2
-npm --silent run api -- market-stats energy shard2
-npm --silent run api -- user-rooms USER_ID
-npm --silent run api -- --help
+npx --no-install screeps-api call gameRoomOverview E42N24 8 shard2
+npx --no-install screeps-api call gameRoomStatus E42N24 shard2
+npx --no-install screeps-api call gameRoomObjects E42N24 shard2
+npx --no-install screeps-api call userMemoryGet rooms.E42N24 shard2
+npx --no-install screeps-api call gameMarketStats energy shard2
+npx --no-install screeps-api call userRooms USER_ID
+npx --no-install screeps-api --help
 ```
 
-> ⚠️ **查房间/历史必须指定 `shard`**：zkl2333 的活跃房间在 **shard2**（`room-objects`、`room-status`、`room-overview`、`room-history`、`memory-get rooms.*` 等命令都要带上 `shard2` 参数，否则会落到默认分片，返回空数据或别的分片内容）。示例：`npm --silent run api -- room-objects E42N24 shard2`。
+> ⚠️ **查房间/历史必须指定 `shard`**：zkl2333 的活跃房间在 **shard2**（`gameRoomObjects`、`gameRoomStatus`、`gameRoomOverview`、`history`、`userMemoryGet` 等调用都要带上 `shard2` 参数，否则会落到默认分片，返回空数据或别的分片内容）。示例：`npx --no-install screeps-api call gameRoomObjects E42N24 shard2`。
 >
-> `room-history` 的 `tick` 需使用**该 shard 自己的游戏时间**（先 `npm --silent run api -- game-time shard2` 查询），API 会自动对齐到 100 的倍数；历史只保留最近若干天，tick 太旧会 404。
+> `history` 的 `tick` 需使用**该 shard 自己的游戏时间**（先 `npx --no-install screeps-api call gameTime shard2` 查询），API 会自动对齐到 100 的倍数；历史只保留最近若干天，tick 太旧会 404。
 
-CLI 已覆盖 `screeps-api` HTTP 客户端中的完整只读查询面：基础/认证、地图/房间、市场、Shard、排行榜/赛季、用户、Memory/Segment、消息读取、实验战斗数据和代码读取。完整命令与参数见 [AGENTS.md](./AGENTS.md)，`--help` 输出命令摘要。
+项目直接使用上游 `screeps-api` CLI：HTTP 查询通过 `call` 调用官方客户端方法，Memory/Segment/代码等能力见 `screeps-api --help`。实时 WebSocket 示例仍由 `demo:ws` 提供。
 
 `interval` 通常支持 `8`、`180`、`1440` 分钟；市场 `resource`、地图 `stat` 和排行榜 `mode` 必须使用官方允许值。官方房间统计输出 `stats`、`totals` 和 `statsMax`。
 
-CLI 只开放读取方法，不支持任意 `screeps-api` 方法反射，也不暴露代码提交、Memory 写入或 Console 写入接口。
+官方 CLI 本身也提供写 Memory、Segment、上传代码等能力。生产环境使用时必须遵守本仓库的 Agent/操作提示词，不要调用写入命令。
 
 详细说明请查看 [AGENTS.md](./AGENTS.md)。工具文档入口位于 [`docs/README.md`](./docs/README.md)，API 读取注意事项位于 [`docs/screeps-api.md`](./docs/screeps-api.md)。
 

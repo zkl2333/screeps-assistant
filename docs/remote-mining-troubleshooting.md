@@ -6,14 +6,14 @@
 
 - **默认 shard：** `shard2`
 - **Memory 路径：** `Memory.remoteMining`
-- **统一 CLI 入口：** `npm --silent run api -- <command> shard2`
+- **官方 CLI 入口：** `npx --no-install screeps-api call <method> ...`
 
 ## 排查步骤
 
 ### 1. 确认 remoteMining Memory 是否存在
 
 ```bash
-npm --silent run api -- memory-get remoteMining shard2 --pretty
+npx --no-install screeps-api call userMemoryGet remoteMining shard2
 ```
 
 **判断：**
@@ -83,7 +83,7 @@ resumeAt: <具体 tick>
 **查询当前游戏 tick 判断恢复时间：**
 
 ```bash
-npm --silent run api -- game-time shard2
+npx --no-install screeps-api call gameTime shard2
 ```
 
 如果 `resumeAt - gameTime` 差值在 500 tick 以内（约 2-3 分钟），无需干预。
@@ -91,7 +91,7 @@ npm --silent run api -- game-time shard2
 ### 4. 检查目标房间当前状态
 
 ```bash
-npm --silent run api -- room-objects <remoteRoom> shard2 --pretty
+npx --no-install screeps-api call gameRoomObjects <remoteRoom> shard2
 ```
 
 确认：
@@ -118,7 +118,7 @@ npm --silent run api -- room-objects <remoteRoom> shard2 --pretty
 **b) 邻房是否全不符合条件：**
 
 ```bash
-npm --silent run api -- room-objects <adjacentRoom> shard2 --pretty
+npx --no-install screeps-api call gameRoomObjects <adjacentRoom> shard2
 ```
 
 相邻房间被占/被预定/有 Keeper → 无法开矿。

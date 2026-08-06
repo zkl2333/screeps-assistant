@@ -18,7 +18,6 @@
 ├── package.json
 ├── demo-basic.js         # 基础示例：账户信息、Memory、Shard 列表
 ├── demo-room.js          # 房间查询：统计数据、状态、地形
-├── screeps-api-cli.js    # 统一只读 CLI：封装 screeps-api 方法
 ├── demo-websocket.js     # WebSocket 实时监控：CPU、Console
 ├── pull-code.js          # 从 Screeps 拉取代码到本地（只读）
 ├── deploy-github.js      # 历史脚本，禁止用于正式 bot 部署
@@ -35,7 +34,7 @@ npm install
 # 演示脚本（只读）
 npm run demo:basic            # 账户信息 + Memory 读取
 npm run demo:room             # 查询房间（默认 E1N8）
-npm --silent run api -- --help # 统一只读 CLI 帮助
+npx --no-install screeps-api --help # 官方 CLI 帮助
 npm run demo:ws               # WebSocket 实时监控 60 秒
 
 # 代码管理（只读拉取）
@@ -164,28 +163,27 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
 - 查询结果默认是临时输出；需要长期保留时写入 bot 的对应领域或 `docs/verification/`。
 - 不创建 `.agent`、`.agents`、`agent-memory` 或新的项目计划文件；根目录 `AGENTS.md` 是唯一 Agent 规则入口。
 
-### 统一只读 CLI
+### 官方 CLI
 
-Agent 查询 Screeps 官方数据时，统一在本目录使用 `screeps-api-cli.js`，入口命令为：
+Agent 查询 Screeps 官方数据时，统一使用上游 `screeps-api` CLI，入口命令为：
 
 ```bash
-npm --silent run api -- <command> ...
+npx --no-install screeps-api call <method> ...
 ```
 
-当前允许的命令白名单（均为显式路由，不接受任意方法名）：
+常用只读方法包括：
 
-- 基础与认证读取：`version`、`auth-mod`、`auth-me`、`token-info`（只返回权限元数据，不返回 Token 值）、`servers-list`、`register-check-email <email>`、`register-check-username <username>`、`room-history <room> <tick> [shard]`
-- 地图与房间读取：`map-stats <rooms> <stat> [shard]`、`game-time [shard]`、`world-size [shard]`、`room-decorations <room> [shard]`、`room-objects <room> [shard]`、`room-status <room> [shard]`、`room-terrain <room> [shard]`、`room-terrain-unencoded <room> [shard]`、`room-overview <room> [interval] [shard]`
-- 无持久化副作用的名称查询：`unique-object-name <type> [shard]`、`check-object-name <type> <name> [shard]`、`unique-flag-name [shard]`、`check-flag-name <name> [shard]`
-- 市场与 Shard：`market-orders-index [shard]`、`market-my-orders`、`market-orders <resource> [shard]`、`market-stats <resource> [shard]`、`shards-info`
-- 排行榜与赛季：`leaderboard-list [limit] [mode] [offset] [season]`、`leaderboard-find <username> [mode] [season]`、`leaderboard-seasons`、`seasons-list`、`seasons-current`、`scoreboard-list [offset] [limit] [search]`
-- 用户读取：`world-start-room [shard]`、`world-status`、`branches`、`code-get <branch>`、`decorations-inventory`、`decorations-themes`、`respawn-prohibited-rooms`、`user-find <username>`、`user-find-by-id <id>`、`user-stats <id> <interval>`、`user-rooms <id>`、`user-overview <interval> <stat>`、`money-history [page]`、`user-name`
-- Memory、消息与实验数据：`memory-get [path] [shard]`、`memory-segment-get <segment> [shard]`、`messages-list <respondent>`、`messages-index`、`messages-unread-count`、`experimental-pvp [interval]`、`experimental-nukes`、`warpath-battles [interval]`
+- 地图与房间读取：`gameMapStats`、`gameTime`、`gameWorldSize`、`gameRoomDecorations`、`gameRoomObjects`、`gameRoomStatus`、`gameRoomTerrain`、`gameRoomTerrainUnencoded`、`gameRoomOverview`
+- 市场与 Shard：`gameMarketOrdersIndex`、`gameMarketMyOrders`、`gameMarketOrders`、`gameMarketStats`、`gameShardsInfo`
+- 用户、Memory 与消息：`userMemoryGet`、`userMemorySegmentGet`、`userRooms`、`userCodeGet`、`userMessagesList`、`userMessagesIndex`、`userMessagesUnreadCount`
+- 历史与实验数据：`history`、`experimentalPvp`、`experimentalNukes`、`warpathBattles`
+
+官方 CLI 的 `call` 直接调用客户端方法；日常外矿排查不需要额外的数组参数方法。
 
 `rooms` 是逗号分隔的房间名列表；普通统计 `stat` 为 `creepsLost`、`creepsProduced`、`energyConstruction`、`energyControl`、`energyCreeps`、`energyHarvested` 或 `powerProcessed`，`map-stats` 另外支持 `owner0` 和 `claim0`；`resource` 使用 `screeps-api` 的 `MarketResources` 值；`mode` 为 `world` 或 `power`；`interval` 通常为 `8`、`180` 或 `1440`，PVP/Warpath 接口的 interval 是其独立的 tick 参数。
 
-默认输出单行 JSON；需要人工阅读时追加 `--pretty`。房间和 shard 应显式传入，避免使用默认值查询错 shard。除非确有必要，不要再临时编写 JavaScript 调用 `require('screeps-api')`，也不要绕过 CLI 直接反射调用客户端方法。
+官方 CLI 默认输出 JSON。房间和 shard 应显式传入，避免使用默认值查询错 shard。完整命令以 `npx --no-install screeps-api --help` 为准。
 
-CLI 只开放读取接口。名称生成和名称检查虽然使用官方 `POST` 端点，但不改变持久化游戏状态；除此之外禁止通过它或临时脚本调用代码提交、Memory/Segment 写入、Console、建筑/旗帜/Intent、重生/放弃房间、市场写入、消息发送/标记已读、装饰修改或其他有副作用的 API。也不开放原始 `auth-query-token`、任意 `req()` 或会把 Token 放入参数/输出的接口；`token-info` 会主动剥离 Token 值。正式 bot 部署仍只能走 GitHub Actions。
+官方 CLI 也暴露写入接口。Agent 默认只能使用只读方法；禁止调用代码提交、Memory/Segment 写入、Console、建筑/旗帜/Intent、重生/放弃房间、市场写入、消息发送/标记已读或装饰修改等副作用 API。正式 bot 部署仍只能走 GitHub Actions。
 
 官方房间统计使用 `room-overview` 查询。常用字段包括：`energyHarvested`（采集）、`energyConstruction`（建造和维修消耗）、`energyCreeps`（Spawn 与 Renew 消耗）、`energyControl`（升级产生的 GCL 进度，不是 Energy 数量）、`creepsProduced`、`creepsLost` 和 `powerProcessed`。返回值中的 `stats` 是时间序列，`totals` 是区间总计，`statsMax` 是区间最大值；`interval` 支持 `8`、`180`、`1440` 分钟。统计只能说明官方记录的区间数据，不能直接替代完整的房间实时 Energy 收支。

@@ -20,6 +20,6 @@
 - Planner、人口、交通、经济或物流的领域知识库；
 - 长期保存的房间状态快照或动态进度。
 
-以上内容统一放在 [`screeps-bot/docs/`](https://github.com/zkl2333/screeps-bot/tree/main/docs)。本仓库工具采集到的数据如果用于验证 bot，应把结论写入 bot 的 `docs/verification/`；临时查询结果不提交。
+查询命令直接使用上游 [`screeps-api` CLI](https://github.com/screepers/node-screeps-api)。本仓库只维护监控示例、分析脚本和排查文档，不再维护重复的 HTTP CLI。以上 bot 设计与验收内容统一放在 [`screeps-bot/docs/`](https://github.com/zkl2333/screeps-bot/tree/main/docs)。
 
 仓库中只保留根目录的标准 `AGENTS.md`。不要再创建 `.agent`、`.agents` 或 `agent-memory` 目录。
