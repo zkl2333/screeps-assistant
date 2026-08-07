@@ -1,6 +1,6 @@
 # Screeps 参考项目清单
 
-> 用途：跨设备重新拉取参考代码的统一清单。本地统一存放于 `../参考项目/`。
+> 用途：跨设备重新拉取参考代码的统一清单。本地统一存放于工作区的 `参考项目/`。
 > 更新时间：2026-08-03。拉取/增删项目时同步更新本文件。
 
 
@@ -20,5 +20,5 @@
 
 - `overmind`、`creep-tasks` 已停更，但代码可用（Screeps 核心 API 稳定）；看思路别照抄。
 - `node-screeps-api` 是工具链依赖（本仓库 CLI 的基础），不是游戏 AI 参考。
-- 外矿敌情处理对比、对 X3.1 设计的定位见 `screeps-bot` 侧的框架调研（skill `gaming/screeps-bot` 的 `references/framework-landscape.md`）。
+- TI 及当前二开实现的分析统一写入 `screeps-bot/handbook/`；本文件只维护参考项目索引。
 - 查询 Screeps 官方数据（房间归属/签名/历史）时注意：**zkl2333 在 shard2**，所有 map-stats / room-history 查询必须带 `shard2`，别查错分片。

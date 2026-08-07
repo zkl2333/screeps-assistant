@@ -2,7 +2,7 @@
 
 基于 [screepers/node-screeps-api](https://github.com/screepers/node-screeps-api)（社区维护的非官方封装）的 Screeps 外部 HTTP + WebSocket API 命令行工具集。
 
-这是 Screeps 的外部工具仓库，提供房间与账号信息读取、实时监控、数据分析和代码只读备份能力。bot 的设计与实现不在本仓库维护。
+这是 Screeps 的外部工具与通用游戏知识仓库，提供房间与账号信息读取、实时监控、数据分析、代码只读备份，以及不依赖具体 Bot 框架的游戏机制和策略资料。bot 的设计与实现不在本仓库维护。
 
 ## 技术栈
 
@@ -21,7 +21,7 @@
 ├── demo-websocket.js     # WebSocket 实时监控：CPU、Console
 ├── pull-code.js          # 从 Screeps 拉取代码到本地（只读）
 ├── deploy-github.js      # 历史脚本，禁止用于正式 bot 部署
-├── docs/                 # 工具和 Screeps API 读取说明
+├── docs/                 # API、通用游戏知识、学习资料和参考项目
 └── screeps-backup/       # 拉取的代码备份（已 gitignore）
 ```
 
@@ -125,7 +125,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
 1. 立刻停止继续直接部署
 2. 以 GitHub `main` 为唯一真相源
 3. 把缺失改动补回仓库并走 Actions 重新发布
-4. 在 `screeps-bot/docs/verification/` 记录漂移事件与纠正结果
+4. 在 `screeps-bot/handbook/operations/` 记录漂移事件与纠正结果
 
 **不要抱侥幸心理。规章制度必须落实到每次改 bot 的工作中。**
 
@@ -139,7 +139,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
 - **监控分析：** 提供 HTTP / WebSocket 采集、结构化输出和通用分析能力。
 - **代码备份：** 从 Screeps 只读拉取代码，辅助核对线上版本。
 - **工具开发：** 修改本项目的 API 客户端、查询命令和分析脚本。
-- **仓库边界：** bot 设计、实现计划、源码改动、发布结果和验收记录全部进入 `screeps-bot`。
+- **仓库边界：** 通用游戏知识可进入本仓库；TI 或当前 bot 的设计、实现计划、源码改动、发布结果和验收记录全部进入 `screeps-bot`。
 - **检查 CI：** 使用本仓库工具核对 bot 线上状态时，仍必须以 GitHub Actions 发布结果为准，不得改用本地 API 直推作为“补救”。
 - **操作边界：**
   - 普通查询和只读分析可直接执行
@@ -150,17 +150,17 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
 
 ### 工具知识维护
 
-- 已验证的 API 调用、字段含义和读取限制记录在 `docs/screeps-api.md`。
+- 已验证的 API 调用、字段含义和读取限制记录在 `docs/api/screeps-api.md`。
 - 这里只记录工具如何读取数据，不记录 bot 应如何设计或下一步实现什么。
 - 不把凭证、Auth Token、密码或完整私有 Memory 写入文档。
-- 任何绕过 GitHub Actions 的 bot 部署尝试都视为流程违规，纠偏记录写入 `screeps-bot/docs/verification/`。
+- 任何绕过 GitHub Actions 的 bot 部署尝试都视为流程违规，纠偏记录写入 `screeps-bot/handbook/operations/`。
 
 ### 文档归属
 
 - 修改文档前先读 [`docs/README.md`](./docs/README.md)。
-- 本仓库只维护读取工具、API / WebSocket 用法和字段限制。
-- bot 的领域模型、算法设计、代码计划、发布结果和线上验收全部写入 `screeps-bot/docs/`。
-- 查询结果默认是临时输出；需要长期保留时写入 bot 的对应领域或 `docs/verification/`。
+- 本仓库维护读取工具、API / WebSocket 用法、字段限制和框架无关的 Screeps 游戏知识。
+- TI 及当前 bot 的领域模型、算法设计、代码计划、发布结果和线上验收全部写入 `screeps-bot/handbook/`。
+- 查询结果默认是临时输出；需要长期保留时写入 bot 的对应领域或 `handbook/operations/`。
 - 不创建 `.agent`、`.agents`、`agent-memory` 或新的项目计划文件；根目录 `AGENTS.md` 是唯一 Agent 规则入口。
 
 ### 官方 CLI

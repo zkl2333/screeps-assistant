@@ -39,4 +39,4 @@
 ## 备注
 
 - 整体主线：以顶尖玩家（尤其 Tigga）第一视角复盘 + 锦标赛高光，展示高级战斗/经济策略，附带新手入门编程教程。
-- 视频偏实战观战与策略思路，具体代码写法参考 [`reference-projects.md`](./reference-projects.md) 中的开源项目。
+- 视频偏实战观战与策略思路，具体代码写法参考 [`reference-projects.md`](../references/reference-projects.md) 中的开源项目。

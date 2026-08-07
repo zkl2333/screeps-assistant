@@ -33,11 +33,11 @@ npx --no-install screeps-api --help
 
 官方 CLI 本身也提供写 Memory、Segment、上传代码等能力。生产环境使用时必须遵守本仓库的 Agent/操作提示词，不要调用写入命令。
 
-详细说明请查看 [AGENTS.md](./AGENTS.md)。工具文档入口位于 [`docs/README.md`](./docs/README.md)，API 读取注意事项位于 [`docs/screeps-api.md`](./docs/screeps-api.md)。
+详细说明请查看 [AGENTS.md](./AGENTS.md)。文档入口位于 [`docs/README.md`](./docs/README.md)，API 读取注意事项位于 [`docs/api/screeps-api.md`](./docs/api/screeps-api.md)。
 
 ## 相关项目
 
-- [screeps-bot](https://github.com/zkl2333/screeps-bot) - 游戏 AI 代码、设计、计划与验收记录仓库
+- [screeps-bot](https://github.com/zkl2333/screeps-bot) - 基于 TI 的游戏 AI 二开、架构笔记与验收记录仓库
 
 ## 发布纪律
 
