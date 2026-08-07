@@ -10,6 +10,7 @@
 | [`../AGENTS.md`](../AGENTS.md) | 凭证安全、只读边界和操作规则 |
 | [`screeps-api.md`](./screeps-api.md) | 房间、Memory、Shard、WebSocket 等读取接口的用法和字段注意事项 |
 | [`reference-projects.md`](./reference-projects.md) | 参考项目清单：跨设备重新拉取的仓库地址、活跃度与用途 |
+| [`learning-resources.md`](./learning-resources.md) | 视频学习资料：锦标赛复盘、战斗分析、编程教程播放列表 |
 | [`remote-mining-troubleshooting.md`](./remote-mining-troubleshooting.md) | 外矿系统排查流程：Memory 为空、被攻击召回、cooldown 等常见问题定位 |
 | 源码与脚本 | 房间信息读取、监控、分析和代码备份工具 |
 
