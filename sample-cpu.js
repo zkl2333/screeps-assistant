@@ -9,7 +9,13 @@ async function main() {
   const samples = []
 
   await api.socket.connect()
+  let initialized = false
   await api.socket.subscribe('cpu', event => {
+    if (!initialized) {
+      initialized = true
+      return
+    }
+
     const { cpu, memory } = event.data
     samples.push({ cpu, memory })
     if (samples.length >= sampleCount) finish(0)
