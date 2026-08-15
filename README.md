@@ -33,7 +33,7 @@ npx --no-install screeps-api --help
 
 官方 CLI 本身也提供写 Memory、Segment、上传代码等能力。生产环境使用时必须遵守本仓库的 Agent/操作提示词，不要调用写入命令。
 
-详细说明请查看 [AGENTS.md](./AGENTS.md)。文档入口位于 [`docs/README.md`](./docs/README.md)，API 读取注意事项位于 [`docs/api/screeps-api.md`](./docs/api/screeps-api.md)。
+详细说明请查看 [AGENTS.md](./AGENTS.md)。文档入口位于 [`docs/README.md`](./docs/README.md)，API 读取注意事项位于 [`docs/api/screeps-api.md`](./docs/api/screeps-api.md)。框架无关的市场、Terminal 与资源核查流程见 [`skills/screeps-game-operations/SKILL.md`](./skills/screeps-game-operations/SKILL.md)。
 
 ## 相关项目
 
