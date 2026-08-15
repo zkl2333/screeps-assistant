@@ -125,6 +125,29 @@ RCL6：terminal
 - RCL3 后 tower、rampart/wall 与维修循环才构成常态防御。
 - 先确认 controller owner、敌方 creep 和结构，再决定防守或撤退；不要把中立 Invader、Source Keeper、其他玩家混为一类。
 
+### 6. 社区教程的阶段门槛
+
+社区新手系列通常按：
+
+```text
+采集 → 升级 → Spawn/body → 建造 → 修路/extension
+→ tower/wall → 远矿 → 多房 → container → storage → 重构
+```
+
+顺序可借鉴，但不要按视频或示例代码的进度机械跳级。每阶段先满足：
+
+| 阶段 | 进入条件 | 尚未满足时不要做 |
+| --- | --- | --- |
+| 本房采集 | 每个 source 都有稳定采集和交付 | 外矿 |
+| Spawn/extension | 补员不长期失败，body 不超 capacity | 复杂/大 body 编制 |
+| 建造/维修 | builder 不会令 Spawn 或采集断供 | 大量非必要 site |
+| tower/wall | RCL3 且 tower 有稳定能量 | 把 Safe Mode 当常规防线 |
+| 远矿 | 已侦察 owner、reservation、敌情、路径、运输成本 | 看到 source 就派矿工 |
+| 多房/扩张 | 本房经济、防御和 CPU 有余量 | 在本房断供时开新房 |
+| storage/重构 | 物流已稳定且问题已经重复出现 | 为一次性问题引入复杂框架 |
+
+角色文件和 prototype 适合用来识别可复用行为；不要把 Spawn 调度、跨房状态或策略判断塞进 prototype。
+
 ## CPU 与调试
 
 ### CPU
@@ -169,6 +192,7 @@ CPU 不持续消耗 bucket
 
 ## 官方资料
 
+- [Screeps Nooby Guide 视频与对应代码](https://github.com/Tim-Pohlmann/Screeps-Nooby-Guide)：社区新手路线，覆盖采集到 storage/重构；借鉴阶段顺序，不照搬旧式单文件架构。
 - [官方模拟教程](https://screeps.com/a/#!/sim/tutorial)
 - [官方教程脚本](https://github.com/screeps/tutorial-scripts)
 - [Introduction](https://docs.screeps.com/introduction.html)

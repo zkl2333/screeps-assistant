@@ -156,4 +156,3 @@ npx --no-install screeps-api call gameMarketStats O shard2
 - [市场官方规则](https://docs.screeps.com/market.html)
 - [`docs/api/screeps-api.md`](../../docs/api/screeps-api.md)
 - [`AGENTS.md`](../../AGENTS.md)
-- Bot 侧经济设计 Skill：`screeps-bot/skills/screeps-bot-economy/SKILL.md`
