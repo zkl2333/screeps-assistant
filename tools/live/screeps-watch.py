@@ -662,7 +662,8 @@ def collect_hm(previous: Any, official: dict[str, Any]) -> tuple[dict[str, Any],
     bucket_average_100 = history_value(history, "bucket", 100)
     bucket_delta = history_value(history, "bucket_delta", 100)
     creeps = history_value(history, "creeps", 100)
-    cpu_stats = hivemind.get("cpuStats") or {}
+    raw_cpu_stats = hivemind.get("cpuStats") or {}
+    cpu_stats = {key: value for key, value in raw_cpu_stats.items() if key != "ratioSamples"}
     bucket = cpu_stats.get("lastCompletedBucket", bucket_average_100)
     official_usage = official_sample.get("mean") if official_sample else None
     cpu_limit = official.get("cpu_limit")
