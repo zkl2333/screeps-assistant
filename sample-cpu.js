@@ -17,7 +17,7 @@ async function main() {
     }
 
     const { cpu, memory } = event.data
-    samples.push({ cpu, memory })
+    samples.push({ cpu, memory, sampledAt: Date.now() })
     if (samples.length >= sampleCount) finish(0)
   })
 

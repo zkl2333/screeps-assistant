@@ -182,25 +182,38 @@ def history_value(history: Any, key: str, interval: int = 100) -> float | None:
 
 
 def official_cpu_sample() -> dict[str, Any] | None:
+    """读取连续官方 CPU 样本，作为总 CPU 的实时事实源。"""
     try:
         proc = subprocess.run(
-            ["node", "sample-cpu.js", "3", "20000"],
+            ["node", "sample-cpu.js", "10", "40000"],
             cwd=CLI_DIR,
             capture_output=True,
             text=True,
-            timeout=25,
+            timeout=45,
         )
         if proc.returncode != 0 or not proc.stdout.strip():
             return None
         samples = json.loads(proc.stdout)
-        values = [
-            sample.get("cpu") for sample in samples
+        valid_samples = [
+            sample for sample in samples
             if isinstance(sample, dict) and isinstance(sample.get("cpu"), (int, float))
         ]
+        values = [sample["cpu"] for sample in valid_samples]
         if not values:
             return None
-        return {"samples": samples, "median": statistics.median(values)}
-    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+
+        return {
+            "samples": valid_samples,
+            "sampleCount": len(values),
+            "mean": statistics.mean(values),
+            "median": statistics.median(values),
+            "min": min(values),
+            "max": max(values),
+            "p95": sorted(values)[max(0, math.ceil(len(values) * 0.95) - 1)],
+            "sampledAtStart": valid_samples[0].get("sampledAt"),
+            "sampledAtEnd": valid_samples[-1].get("sampledAt"),
+        }
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError, TypeError, ValueError):
         return None
 
 
@@ -244,6 +257,24 @@ def cpu_events(current: dict[str, Any], previous: Any) -> tuple[list[str], dict[
         decline_count = 0
         decline_start = None
 
+    bot_usage = current.get("botUsage10")
+    official_usage = current.get("officialUsage")
+    mismatch_alert = bool(previous.get("mismatch_alert"))
+    mismatch_count = previous.get("mismatch_count", 0)
+    mismatch_recovery = previous.get("mismatch_recovery", 0)
+    if isinstance(bot_usage, (int, float)) and isinstance(official_usage, (int, float)):
+        mismatch = abs(bot_usage - official_usage) > max(2.0, abs(official_usage) * 0.2)
+        mismatch_count = mismatch_count + 1 if mismatch else 0
+        mismatch_recovery = 0 if mismatch else mismatch_recovery + 1
+        if not mismatch_alert and mismatch_count >= CPU_CONFIRM:
+            events.append(f"⚠️ CPU 统计口径偏差：bot 10 Tick={bot_usage:.2f}，官方连续样本={official_usage:.2f}")
+            mismatch_alert = True
+            mismatch_recovery = 0
+        elif mismatch_alert and mismatch_recovery >= CPU_CONFIRM:
+            events.append("✅ CPU 官方样本与 bot 统计已接近")
+            mismatch_alert = False
+            mismatch_count = 0
+
     def band(value: float) -> str:
         if value < CPU_BUCKET_CRITICAL:
             return "critical"
@@ -274,6 +305,9 @@ def cpu_events(current: dict[str, Any], previous: Any) -> tuple[list[str], dict[
         "stable_count": stable_count,
         "decline_alert": decline_alert,
         "decline_start": decline_start,
+        "mismatch_count": mismatch_count,
+        "mismatch_recovery": mismatch_recovery,
+        "mismatch_alert": mismatch_alert,
     }
 
 
@@ -603,22 +637,24 @@ def room_operation_cpu(operations: Any) -> dict[str, float]:
 
 
 def collect_hm(previous: Any, official: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    # 先采官方连续 Tick，再读取 Memory，使官方样本与 bot 10 Tick 窗口尽量重叠。
+    official_sample = official_cpu_sample()
     strategy = memory("strategy") or {}
     history = memory("history") or {}
     operations = memory("operations") or {}
     hivemind = memory("hivemind") or {}
-
-    official_sample = official_cpu_sample()
-    usage = history_value(history, "cpu_total", 100)
-    bucket = history_value(history, "bucket", 100)
+    bot_usage_10 = history_value(history, "cpu_total", 10)
+    bot_usage_100 = history_value(history, "cpu_total", 100)
+    bot_usage_1000 = history_value(history, "cpu_total", 1000)
+    bot_ratio_100 = history_value(history, "cpu_ratio", 100)
+    bucket_average_100 = history_value(history, "bucket", 100)
+    bucket_delta = history_value(history, "bucket_delta", 100)
     creeps = history_value(history, "creeps", 100)
-    cpu_limit = None
-    if official_sample and isinstance(official_sample.get("samples"), list):
-        limits = [sample.get("limit") for sample in official_sample["samples"] if isinstance(sample, dict) and isinstance(sample.get("limit"), (int, float))]
-        if limits:
-            cpu_limit = limits[-1]
-    if cpu_limit is None:
-        cpu_limit = official.get("cpu_limit")
+    cpu_stats = hivemind.get("cpuStats") or {}
+    bucket = cpu_stats.get("lastCompletedBucket", bucket_average_100)
+    official_usage = official_sample.get("mean") if official_sample else None
+    cpu_limit = official.get("cpu_limit")
+    usage = official_usage if isinstance(official_usage, (int, float)) else bot_usage_100
 
     remote_strategy = strategy.get("remoteHarvesting") or {}
     remotes = sorted(remote_strategy.get("rooms") or [])
@@ -631,11 +667,25 @@ def collect_hm(previous: Any, official: dict[str, Any]) -> tuple[dict[str, Any],
         if isinstance(info, dict) and info.get("parentId") == "root"
     }
 
+    previous_cpu_stats = ((previous or {}).get("cpu_stats") or {}) if isinstance(previous, dict) else {}
+    previous_unrecorded = previous_cpu_stats.get("unrecordedTicks", 0)
+    current_unrecorded = cpu_stats.get("unrecordedTicks", 0)
+    unrecorded_delta = current_unrecorded - previous_unrecorded if isinstance(current_unrecorded, int) and isinstance(previous_unrecorded, int) else None
+
     cpu_current = {
         "usage": round(usage, 4) if isinstance(usage, (int, float)) else None,
+        "usageSource": "official" if isinstance(official_usage, (int, float)) else "bot",
         "limit": cpu_limit,
+        "officialUsage": round(official_usage, 4) if isinstance(official_usage, (int, float)) else None,
+        "botUsage10": round(bot_usage_10, 4) if isinstance(bot_usage_10, (int, float)) else None,
+        "botUsage100": round(bot_usage_100, 4) if isinstance(bot_usage_100, (int, float)) else None,
+        "botUsage1000": round(bot_usage_1000, 4) if isinstance(bot_usage_1000, (int, float)) else None,
+        "botRatio100": round(bot_ratio_100, 6) if isinstance(bot_ratio_100, (int, float)) else None,
         "bucket": round(bucket, 2) if isinstance(bucket, (int, float)) else None,
+        "bucketAverage100": round(bucket_average_100, 2) if isinstance(bucket_average_100, (int, float)) else None,
+        "bucketDelta": round(bucket_delta, 4) if isinstance(bucket_delta, (int, float)) else None,
         "creeps": round(creeps, 2) if isinstance(creeps, (int, float)) else None,
+        "tickCompletion": cpu_stats,
         "roomCpu": room_operation_cpu(operations),
         "official": official_sample,
     }
@@ -645,6 +695,8 @@ def collect_hm(previous: Any, official: dict[str, Any]) -> tuple[dict[str, Any],
     cpu_lines, cpu_state = cpu_events(cpu_current, (previous or {}).get("cpu_monitor"))
     if previous:
         events.extend(cpu_lines)
+        if isinstance(unrecorded_delta, int) and unrecorded_delta > 0:
+            events.append(f"⚠️ Bot 有 {unrecorded_delta} 个 Tick 未写入尾部 CPU 统计")
         old_remotes = set(previous.get("remotes") or [])
         new_remotes = set(remotes)
         pending_add = dict(previous.get("pending_remote_add") or {})
@@ -718,6 +770,7 @@ def collect_hm(previous: Any, official: dict[str, Any]) -> tuple[dict[str, Any],
         "room_list": strategy.get("roomList") or {},
         "root_processes": root_processes,
         "process_stale_alert": stale_alert,
+        "cpu_stats": cpu_stats,
         "cpu_monitor": cpu_state,
     }
     return state, events
