@@ -22,7 +22,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-CLI_DIR = str(Path(__file__).resolve().parent.parent)
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_CANDIDATES = [SCRIPT_DIR.parent, Path("/opt/data/workspace/screeps-assistant")]
+CLI_DIR = next((str(path) for path in PROJECT_CANDIDATES if (path / "package.json").is_file() and (path / "node_modules/screeps-api").is_dir()), str(SCRIPT_DIR.parent))
 USER_ID = "5dac32ae8cf7c431637c7567"
 SHARD = "shard2"
 STATE_DIR = "/opt/data/cache/screeps-hm-watch"
@@ -41,14 +43,15 @@ DEBOUNCE_CONFIRM = 3
 CPU_OVERLOAD_RATIO = 0.95
 CPU_RECOVERY_RATIO = 0.90
 CPU_CONFIRM = 3
-CPU_BUCKET_WARN = 3000
-CPU_BUCKET_CRITICAL = 1000
 CPU_HISTORY_LIMIT = 144
 PROCESS_STALE_TICKS = 50
 DOWNGRADE_WARN_TICKS = 25_000
 DOWNGRADE_CRITICAL_TICKS = 10_000
 STORAGE_ENERGY_DROP_MIN = 25_000
 STORAGE_ENERGY_DROP_RATIO = 0.30
+ECONOMY_STORAGE_WARN = 10_000
+ECONOMY_NET_OUTFLOW_WARN = -10_000
+ECONOMY_NET_OUTFLOW_CRITICAL = -30_000
 ROOM_NAMES: dict[str, str] = {}
 
 
@@ -88,7 +91,7 @@ def run_cli(*args: str, retries: int = 1) -> Any:
 
 
 def memory(path: str) -> Any:
-    return run_cli("memory", path, "-s", SHARD)
+    return run_cli("call", "userMemoryGet", path, SHARD)
 
 
 def api(method: str, *args: str) -> Any:
@@ -239,23 +242,6 @@ def cpu_events(current: dict[str, Any], previous: Any) -> tuple[list[str], dict[
         overload_alert = False
         overload_count = 0
 
-    old_bucket = previous.get("last_bucket")
-    declining = isinstance(old_bucket, (int, float)) and bucket < old_bucket
-    decline_count = previous.get("decline_count", 0) + 1 if declining else 0
-    stable_count = previous.get("stable_count", 0) + 1 if old_bucket is not None and not declining else 0
-    decline_alert = bool(previous.get("decline_alert"))
-    decline_start = previous.get("decline_start")
-    if declining and previous.get("decline_count", 0) == 0:
-        decline_start = old_bucket
-    if not decline_alert and decline_count >= CPU_CONFIRM:
-        events.append(f"📉 HM CPU Bucket 持续下降：{decline_start:.0f} → {bucket:.0f}")
-        decline_alert = True
-        stable_count = 0
-    elif decline_alert and stable_count >= CPU_CONFIRM:
-        events.append(f"✅ HM CPU Bucket 已停止下降：当前 {bucket:.0f}")
-        decline_alert = False
-        decline_count = 0
-        decline_start = None
 
     bot_usage = current.get("botUsage10")
     official_usage = current.get("officialUsage")
@@ -275,36 +261,17 @@ def cpu_events(current: dict[str, Any], previous: Any) -> tuple[list[str], dict[
             mismatch_alert = False
             mismatch_count = 0
 
-    def band(value: float) -> str:
-        if value < CPU_BUCKET_CRITICAL:
-            return "critical"
-        if value < CPU_BUCKET_WARN:
-            return "warn"
-        return "normal"
-
-    old_band = previous.get("bucket_band")
-    new_band = band(bucket)
-    if old_band is not None and old_band != new_band:
-        if new_band == "critical":
-            events.append(f"🚨 HM CPU Bucket 跌破 {CPU_BUCKET_CRITICAL}：当前 {bucket:.0f}")
-        elif new_band == "warn":
-            events.append(f"⚠️ HM CPU Bucket 进入警戒区：当前 {bucket:.0f}")
-        else:
-            events.append(f"✅ HM CPU Bucket 恢复至 {CPU_BUCKET_WARN} 以上：当前 {bucket:.0f}")
 
     history = list(previous.get("history") or [])[-(CPU_HISTORY_LIMIT - 1):]
     history.append({"ts": int(time.time()), **current})
     return events, {
         "history": history,
         "last_bucket": bucket,
-        "bucket_band": new_band,
+
         "overload_count": overload_count,
         "recovery_count": recovery_count,
         "overload_alert": overload_alert,
-        "decline_count": decline_count,
-        "stable_count": stable_count,
-        "decline_alert": decline_alert,
-        "decline_start": decline_start,
+
         "mismatch_count": mismatch_count,
         "mismatch_recovery": mismatch_recovery,
         "mismatch_alert": mismatch_alert,
@@ -328,7 +295,30 @@ def overview_window(room_name: str) -> tuple[float, float, float]:
     def total(key: str) -> float:
         return sum(point.get("value", 0) or 0 for point in stats.get(key, []))
 
-    return total("creepsLost"), total("creepsProduced"), total("energyHarvested")
+    energy_harvested = total("energyHarvested")
+    energy_creeps = total("energyCreeps")
+    energy_construction = total("energyConstruction")
+    return {
+        "energyHarvested": energy_harvested,
+        "energyCreeps": energy_creeps,
+        "energyConstruction": energy_construction,
+        "energyControl": total("energyControl"),
+        "creepsProduced": total("creepsProduced"),
+        "creepsLost": total("creepsLost"),
+        "netEnergy": energy_harvested - energy_creeps - energy_construction,
+    }
+
+
+def economy_band(room: dict[str, Any]) -> str:
+    storage_energy = room.get("storageEnergy")
+    net_energy = (room.get("economy") or {}).get("netEnergy")
+    if isinstance(storage_energy, (int, float)) and storage_energy < ECONOMY_STORAGE_WARN:
+        return "critical"
+    if isinstance(net_energy, (int, float)) and net_energy <= ECONOMY_NET_OUTFLOW_CRITICAL:
+        return "critical"
+    if isinstance(net_energy, (int, float)) and net_energy <= ECONOMY_NET_OUTFLOW_WARN:
+        return "warn"
+    return "normal"
 
 
 def hostile_summary(objects: list[dict[str, Any]], users: Any = None) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -434,9 +424,7 @@ def should_notify_event(event: str) -> bool:
         "外矿 Operation",
         "CPU 持续超载",
         "CPU 负载恢复",
-        "CPU Bucket 跌破",
-        "CPU Bucket 进入警戒区",
-        "CPU Bucket 恢复",
+        "经济进入",
         "GCL 变化",
     )
     return any(fragment in event for fragment in urgent_fragments)
@@ -488,7 +476,10 @@ def collect_official(previous: Any) -> tuple[dict[str, Any], list[str]]:
                 "hostiles": hostiles,
                 "scouts": scouts,
             }
-            overviews[room_name] = overview_window(room_name)
+            economy = overview_window(room_name)
+            rooms[room_name]["economy"] = economy
+            rooms[room_name]["economyBand"] = economy_band(rooms[room_name])
+            overviews[room_name] = economy
         except Exception:  # 单房采样失败不把房间误判为丢失
             if isinstance(previous, dict) and room_name in (previous.get("rooms") or {}):
                 rooms[room_name] = previous["rooms"][room_name]
@@ -565,7 +556,19 @@ def collect_official(previous: Any) -> tuple[dict[str, Any], list[str]]:
                 if drop >= STORAGE_ENERGY_DROP_MIN and drop / old_energy >= STORAGE_ENERGY_DROP_RATIO:
                     events.append(f"📉 {room_label(room_name)} Storage 能量骤降：{old_energy:.0f} → {new_energy:.0f}")
 
-            lost, produced, _ = overviews.get(room_name, (0, 0, 0))
+            economy = room.get("economy") or {}
+            old_band = old.get("economyBand", "normal")
+            new_band = room.get("economyBand", "normal")
+            if old_band != new_band:
+                if new_band == "critical":
+                    events.append(f"🚨 {room_label(room_name)} 经济进入危险：库存 {new_energy if isinstance(new_energy, (int, float)) else '?'}，窗口净能量 {economy.get('netEnergy', '?')}")
+                elif new_band == "warn":
+                    events.append(f"⚠️ {room_label(room_name)} 经济进入警戒：窗口净能量 {economy.get('netEnergy', '?')}")
+                elif old_band in ("warn", "critical"):
+                    events.append(f"✅ {room_label(room_name)} 经济压力解除：窗口净能量 {economy.get('netEnergy', '?')}")
+
+            lost = economy.get("creepsLost", 0)
+            produced = economy.get("creepsProduced", 0)
             if lost > LOST_THRESHOLD and time.time() - lost_alerts.get(room_name, 0) > 8 * 3600:
                 events.append(f"💥 {room_label(room_name)} 近一小时损失 {lost:g} 个 Creep" + (f"（产 {produced:g}）" if produced else ""))
                 lost_alerts[room_name] = int(time.time())
