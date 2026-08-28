@@ -25,6 +25,11 @@ from typing import Any
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_CANDIDATES = [SCRIPT_DIR.parent, Path("/opt/data/workspace/screeps-assistant")]
 CLI_DIR = next((str(path) for path in PROJECT_CANDIDATES if (path / "package.json").is_file() and (path / "node_modules/screeps-api").is_dir()), str(SCRIPT_DIR.parent))
+CONFIG_CANDIDATES = [
+    Path(os.environ["SCREEPS_CONFIG"]) if os.environ.get("SCREEPS_CONFIG") else None,
+    *(Path(CLI_DIR) / name for name in (".screeps.yml", ".screeps.yaml", ".screeps.json", "screeps.json")),
+]
+CONFIG_FILE = next((path for path in CONFIG_CANDIDATES if path and path.is_file()), None)
 USER_ID = "5dac32ae8cf7c431637c7567"
 SHARD = "shard2"
 STATE_DIR = "/opt/data/cache/screeps-hm-watch"
@@ -67,10 +72,14 @@ def is_rate_limited(message: Any) -> bool:
 def run_cli(*args: str, retries: int = 1) -> Any:
     """运行 screeps-api，只允许只读命令。"""
     last_error = "unknown error"
+    env = os.environ.copy()
+    if CONFIG_FILE:
+        env["SCREEPS_CONFIG"] = str(CONFIG_FILE)
     for attempt in range(retries + 1):
         proc = subprocess.run(
             ["npx", "--no-install", "screeps-api", *args],
             cwd=CLI_DIR,
+            env=env,
             capture_output=True,
             text=True,
             timeout=75,
