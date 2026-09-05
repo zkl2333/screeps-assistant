@@ -3,3 +3,7 @@ node_modules/
 .screeps.yml
 screeps-backup*/
 *.crdownload
+backups/
+screeps-backup*/
+tools/briefs/.brief-*
+*.json.gz

@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_CANDIDATES = [SCRIPT_DIR.parent, Path("/opt/data/workspace/screeps-assistant")]
+PROJECT_CANDIDATES = [SCRIPT_DIR.parent.parent, Path("/opt/data/workspace/screeps-assistant")]
 CLI_DIR = next((str(path) for path in PROJECT_CANDIDATES if (path / "package.json").is_file() and (path / "node_modules/screeps-api").is_dir()), str(SCRIPT_DIR.parent))
 CONFIG_CANDIDATES = [
     Path(os.environ["SCREEPS_CONFIG"]) if os.environ.get("SCREEPS_CONFIG") else None,
@@ -197,7 +197,7 @@ def official_cpu_sample() -> dict[str, Any] | None:
     """读取连续官方 CPU 样本，作为总 CPU 的实时事实源。"""
     try:
         proc = subprocess.run(
-            ["node", "sample-cpu.js", "10", "40000"],
+            ["node", "tools/live/sample-cpu.js", "10", "40000"],
             cwd=CLI_DIR,
             capture_output=True,
             text=True,

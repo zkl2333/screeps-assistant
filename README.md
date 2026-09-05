@@ -1,45 +1,91 @@
 # Screeps Assistant
 
-**Screeps 外部读取、监控与分析工具**
+Screeps 外部读取、实时连接、代码备份和数据分析工具。正式服与赛季服使用同一套只读命令，但通过不同目标配置隔离。
 
-基于 [`screeps-api`](https://github.com/screepers/node-screeps-api) 的外部工具集，用于读取房间和账号信息、监控运行状态、分析数据与备份线上代码。
-
-## 快速开始
+## 安装
 
 ```bash
-npm install
-npm run demo:basic
+npm ci
 ```
 
-官方 CLI 入口：
+本地 `.screeps.yml` 只保存令牌，已被 Git 忽略。目标配置：
+
+- `main`：正式服，默认 `shard2`，代码分支 `main`
+- `season`：赛季服，默认 `shardSeason`，代码分支 `default`
+
+## 只读命令
 
 ```bash
-npx --no-install screeps-api call gameRoomOverview E42N24 8 shard2
-npx --no-install screeps-api call gameRoomStatus E42N24 shard2
-npx --no-install screeps-api call gameRoomObjects E42N24 shard2
-npx --no-install screeps-api call userMemoryGet rooms.E42N24 shard2
-npx --no-install screeps-api call gameMarketStats energy shard2
-npx --no-install screeps-api call userRooms USER_ID
-npx --no-install screeps-api --help
+# 账号
+npm run query -- account --target main --shard shard2
+
+# 分片和房间
+npm run query -- shards --target main --shard shard2
+npm run query -- rooms --target main --shard shardX
+
+# 房间现场摘要
+npm run query -- room --target main --shard shard2 --room E41N23
+
+# Memory
+npm run query -- memory --target main --shard shard2 --path rooms.E41N23
+
+# 代码模块摘要
+npm run query -- code --target main --branch main
+
+# 市场挂单
+npm run query -- market --target main --shard shard2
+
+# 消息索引
+npm run query -- messages --target main
+
+# 历史统计
+npm run query -- history --target main --shard shard2 --room E41N23 --stat creepsLost --interval 8
+
+# 赛季服
+npm run query -- summary --target season
+npm run query -- rooms --target season
 ```
 
-> ⚠️ **查房间/历史必须指定 `shard`**：zkl2333 的活跃房间在 **shard2**（`gameRoomObjects`、`gameRoomStatus`、`gameRoomOverview`、`history`、`userMemoryGet` 等调用都要带上 `shard2` 参数，否则会落到默认分片，返回空数据或别的分片内容）。示例：`npx --no-install screeps-api call gameRoomObjects E42N24 shard2`。
->
-> `history` 的 `tick` 需使用**该 shard 自己的游戏时间**（先 `npx --no-install screeps-api call gameTime shard2` 查询），API 会自动对齐到 100 的倍数；历史只保留最近若干天，tick 太旧会 404。
+也可以安装为本地命令：
 
-项目直接使用上游 `screeps-api` CLI：HTTP 查询通过 `call` 调用官方客户端方法，Memory/Segment/代码等能力见 `screeps-api --help`。实时 WebSocket 示例仍由 `demo:ws` 提供。
+```bash
+npm link
+screeps-assistant rooms --target main --shard shard2
+```
 
-`interval` 通常支持 `8`、`180`、`1440` 分钟；市场 `resource`、地图 `stat` 和排行榜 `mode` 必须使用官方允许值。官方房间统计输出 `stats`、`totals` 和 `statsMax`。
+## 工具目录
 
-官方 CLI 本身也提供写 Memory、Segment、上传代码等能力。生产环境使用时必须遵守本仓库的 Agent/操作提示词，不要调用写入命令。
+```text
+bin/                       正式命令入口
+src/api/                   目标配置、只读 API 和摘要函数
+tools/backup/              线上代码只读备份
+tools/live/                WebSocket 和 CPU 采样
+tools/analysis/            房间、历史数据分析
+tools/briefs/              旧简报工具，重新适配前不运行
+tests/                     本地测试
+docs/                      API 和使用文档
+skills/                    Screeps 专用知识
+```
 
-详细说明请查看 [AGENTS.md](./AGENTS.md)。文档入口位于 [`docs/README.md`](./docs/README.md)，API 读取注意事项位于 [`docs/api/screeps-api.md`](./docs/api/screeps-api.md)。框架无关的市场、Terminal 与资源核查流程见 [`skills/screeps-game-operations/SKILL.md`](./skills/screeps-game-operations/SKILL.md)。
+## 安全边界
 
-## 相关项目
+本项目默认只做读取：
 
-- [screeps-bot](https://github.com/zkl2333/screeps-bot) - 基于 TI 的游戏 AI 二开、架构笔记与验收记录仓库
+- 不写线上 Memory 或 Segment；
+- 不执行线上 Console；
+- 不上传代码；
+- 不买卖市场资源；
+- 不发送消息或标记已读；
+- 不创建建筑、旗帜或 Intent；
+- 不执行重生、放弃房间等游戏操作。
 
-## 发布纪律
+正式 Bot 代码只能通过 GitHub Actions 发布，不能从本项目旁路上传。
 
-`screeps-bot` **只能**通过 GitHub Actions 发布到正式环境。  
-本仓库用于监控与只读分析，**禁止**作为 bot 的旁路直推通道。
+## 验证
+
+```bash
+npm test
+git diff --check
+```
+
+计划任务暂时全部暂停。新的监控和简报应在基础查询入口稳定后重新设计，不继续兼容旧脚本。

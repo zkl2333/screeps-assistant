@@ -2,13 +2,14 @@
   "name": "screeps-assistant",
   "version": "1.0.0",
   "description": "Screeps Assistant — 玩家本人的 AI 助理",
-  "main": "index.js",
+  "main": "bin/screeps-assistant.js",
+  "bin": {
+    "screeps-assistant": "bin/screeps-assistant.js"
+  },
   "scripts": {
-    "demo:basic": "node demo-basic.js",
-    "demo:room": "node demo-room.js",
-    "demo:ws": "node demo-websocket.js",
-    "pull": "node pull-code.js",
-    "deploy": "node deploy-github.js"
+    "query": "node bin/screeps-assistant.js",
+    "pull": "node tools/backup/pull-code.js",
+    "test": "node tests/client.test.js"
   },
   "keywords": [],
   "author": "",

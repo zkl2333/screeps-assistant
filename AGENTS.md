@@ -14,15 +14,17 @@
 ## 项目结构
 
 ```
-├── .screeps.yml          # API 配置（含 token，已 gitignore）
-├── package.json
-├── demo-basic.js         # 基础示例：账户信息、Memory、Shard 列表
-├── demo-room.js          # 房间查询：统计数据、状态、地形
-├── demo-websocket.js     # WebSocket 实时监控：CPU、Console
-├── pull-code.js          # 从 Screeps 拉取代码到本地（只读）
-├── deploy-github.js      # 历史脚本，禁止用于正式 bot 部署
-├── docs/                 # API、通用游戏知识、学习资料和参考项目
-└── screeps-backup/       # 拉取的代码备份（已 gitignore）
+├── .screeps.yml          # 本地 API 配置（含 token，已 gitignore）
+├── bin/
+│   └── screeps-assistant.js # 正式只读命令入口
+├── src/api/              # 目标配置与只读 API 封装
+├── tools/backup/         # 线上代码只读备份
+├── tools/live/           # WebSocket、CPU 采样和暂存监控工具
+├── tools/analysis/       # 房间、历史数据分析工具
+├── tools/briefs/         # 旧简报工具，重新适配前不运行
+├── tests/                # 本地测试与 fixture
+├── docs/                 # API、使用说明、通用游戏知识和参考资料
+└── skills/               # Screeps 专用技能
 ```
 
 ## 常用命令
@@ -31,15 +33,21 @@
 # 安装依赖
 npm install
 
-# 演示脚本（只读）
-npm run demo:basic            # 账户信息 + Memory 读取
-npm run demo:room             # 查询房间（默认 E1N8）
+# 正式只读命令
+npm run query -- summary --target main --shard shard2
+npm run query -- room --target main --shard shard2 --room E42N24
+npm run query -- memory --target main --shard shard2 --path rooms.E42N24
+npm run query -- segment --target main --shard shard2 --id 0
+npm run query -- summary --target season
 npx --no-install screeps-api --help # 官方 CLI 帮助
-npm run demo:ws               # WebSocket 实时监控 60 秒
+
+# 本地验证
+npm test
+git diff --check
 
 # 代码管理（只读拉取）
-npm run pull                  # 拉取 main 分支代码 → screeps-backup-main/
-node pull-code.js sim ./dir   # 拉取指定分支到指定目录
+npm run pull                  # 只读拉取正式代码
+node tools/backup/pull-code.js main ./dist # 拉取指定分支到指定目录
 ```
 
 ## 配置说明

@@ -1,7 +1,7 @@
 // pull-code.js — 从 Screeps 拉取代码保存到本地
 //
-// 用法: node pull-code.js [screepsBranch] [outputDir]
-// 示例: node pull-code.js main ./dist
+// 用法: node tools/backup/pull-code.js [screepsBranch] [outputDir]
+// 示例: node tools/backup/pull-code.js main ./dist
 
 const { ScreepsHttpClient } = require('screeps-api');
 const fs = require('fs');

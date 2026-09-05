@@ -1,4 +1,4 @@
-// demo-websocket.js — WebSocket 实时监控示例
+// websocket.js — WebSocket 实时订阅工具
 const { ScreepsHttpClient } = require('screeps-api');
 
 async function main() {
