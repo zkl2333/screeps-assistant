@@ -9,7 +9,7 @@
   "scripts": {
     "query": "node bin/screeps-assistant.js",
     "pull": "node tools/backup/pull-code.js",
-    "test": "node tests/client.test.js"
+    "test": "node tests/client.test.js && node tests/map.test.js"
   },
   "keywords": [],
   "author": "",

@@ -7,3 +7,4 @@ backups/
 screeps-backup*/
 tools/briefs/.brief-*
 *.json.gz
+.cache/

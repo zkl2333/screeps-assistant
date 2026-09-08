@@ -18,6 +18,7 @@
 ├── bin/
 │   └── screeps-assistant.js # 正式只读命令入口
 ├── src/api/              # 目标配置与只读 API 封装
+├── src/map/              # 跨环境地图分析（纯函数）与联网扫描
 ├── tools/backup/         # 线上代码只读备份
 ├── tools/live/           # WebSocket、CPU 采样和暂存监控工具
 ├── tools/analysis/       # 房间、历史数据分析工具
@@ -39,6 +40,9 @@ npm run query -- room --target main --shard shard2 --room E42N24
 npm run query -- memory --target main --shard shard2 --path rooms.E42N24
 npm run query -- segment --target main --shard shard2 --id 0
 npm run query -- summary --target season
+npm run query -- world --target season                     # 环境概况：赛季能力、反应堆、世界尺寸
+npm run query -- map --target season --around E5S5 --radius 2  # 地图分析：地形、资源、反应堆
+npm run query -- map --target main --shard shard2 --room E42N24 --ascii  # 文字地形图
 npx --no-install screeps-api --help # 官方 CLI 帮助
 
 # 本地验证

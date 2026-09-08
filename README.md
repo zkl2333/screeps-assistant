@@ -41,10 +41,25 @@ npm run query -- messages --target main
 # 历史统计
 npm run query -- history --target main --shard shard2 --room E41N23 --stat creepsLost --interval 8
 
+# 环境概况（赛季能力、反应堆支持、世界尺寸）
+npm run query -- world --target season
+
+# 地图分析：单房间、范围扫描、ASCII 地形图、范围汇总
+npm run query -- map --target season --room W2N39
+npm run query -- map --target season --around E5S5 --radius 2
+npm run query -- map --target main --shard shard2 --room E41N23 --ascii
+npm run query -- map --target season --around E5S5 --radius 3 --summary-only
+
 # 赛季服
 npm run query -- summary --target season
 npm run query -- rooms --target season
 ```
+
+`map` 命令说明：
+
+- 范围四选一：`--room` 单房间、`--rooms` 逗号分隔列表、`--around` 中心房间加 `--radius`（默认 1）、`--all` 整个分片（请求很多，慎用）；
+- `--concurrency` 控制并发请求数（默认 4），地形结果默认缓存 60 秒（`--cache-ttl` 毫秒调整，`--no-cache` 关闭），缓存在本地 `.cache/map/`；
+- 默认输出逐房间 JSON（地形统计、能源矿、矿物、赛季资源、反应堆、守护者巢穴、入侵核心）；`--summary-only` 只输出范围汇总；`--ascii` 打印 50×50 文字地形图。
 
 也可以安装为本地命令：
 
@@ -58,6 +73,7 @@ screeps-assistant rooms --target main --shard shard2
 ```text
 bin/                       正式命令入口
 src/api/                   目标配置、只读 API 和摘要函数
+src/map/                   跨环境地图分析（纯函数）和联网扫描
 tools/backup/              线上代码只读备份
 tools/live/                WebSocket 和 CPU 采样
 tools/analysis/            房间、历史数据分析

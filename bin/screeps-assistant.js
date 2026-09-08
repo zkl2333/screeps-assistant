@@ -2,6 +2,10 @@
 'use strict';
 
 const {context, objectSummary, readSummary, resolveTarget} = require('../src/api/client');
+const {readWorld, scanRooms} = require('../src/map/query');
+const {terrainAscii} = require('../src/map/analysis');
+
+const BOOLEAN_FLAGS = new Set(['all', 'ascii', 'no-cache', 'summary-only']);
 
 function parseArgs(argv) {
   const [command = 'summary', ...rest] = argv;
@@ -9,6 +13,10 @@ function parseArgs(argv) {
   for (let i = 0; i < rest.length; i += 1) {
     if (!rest[i].startsWith('--')) throw new Error(`未知参数：${rest[i]}`);
     const key = rest[i].slice(2);
+    if (BOOLEAN_FLAGS.has(key)) {
+      args[key] = true;
+      continue;
+    }
     const value = rest[i + 1];
     if (!value || value.startsWith('--')) throw new Error(`参数缺少值：--${key}`);
     args[key] = value;
@@ -81,6 +89,37 @@ async function main() {
   if (args.command === 'shards') {
     const {api} = await context(opts);
     console.log(JSON.stringify(await api.gameShardsInfo(), null, 2));
+    return;
+  }
+  if (args.command === 'world') {
+    console.log(JSON.stringify(await readWorld(opts), null, 2));
+    return;
+  }
+  if (args.command === 'map') {
+    const scan = await scanRooms({
+      ...opts,
+      room: args.room,
+      rooms: args.rooms,
+      around: args.around,
+      radius: args.radius,
+      all: Boolean(args.all),
+      concurrency: args.concurrency,
+      noCache: Boolean(args['no-cache']),
+      cacheTtl: args['cache-ttl'],
+    });
+    if (args.ascii) {
+      for (const item of scan.results) {
+        if (!item.ok) continue;
+        console.log(`=== ${item.value.room} ===`);
+        console.log(terrainAscii(item.value.terrainCells || []));
+      }
+      return;
+    }
+    if (args['summary-only']) {
+      console.log(JSON.stringify({target: scan.target, shard: scan.shard, summary: scan.summary}, null, 2));
+      return;
+    }
+    console.log(JSON.stringify(scan, null, 2));
     return;
   }
   resolveTarget(opts);
