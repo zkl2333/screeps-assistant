@@ -9,9 +9,12 @@ const BOOLEAN_FLAGS = new Set(['all', 'ascii', 'no-cache', 'summary-only']);
 
 function parseArgs(argv) {
   const [command = 'summary', ...rest] = argv;
-  const args = {command};
+  const args = {command, _: []};
   for (let i = 0; i < rest.length; i += 1) {
-    if (!rest[i].startsWith('--')) throw new Error(`未知参数：${rest[i]}`);
+    if (!rest[i].startsWith('--')) {
+      args._.push(rest[i]);
+      continue;
+    }
     const key = rest[i].slice(2);
     if (BOOLEAN_FLAGS.has(key)) {
       args[key] = true;
@@ -26,6 +29,16 @@ function parseArgs(argv) {
 }
 
 function options(args) { return {target: args.target || 'main', shard: args.shard}; }
+
+// Memory 接口返回 {ok, data} 信封；screeps-api 已自动解 gz:，data 只剩 JSON 字符串或已解析的对象。
+function decodeMemoryValue(value) {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -53,9 +66,11 @@ async function main() {
     return;
   }
   if (args.command === 'memory') {
-    if (args.path === undefined) throw new Error('memory 命令需要 --path 路径；根路径请传空字符串');
+    // 路径省略时查 Memory 根。
+    const path = args.path !== undefined ? args.path : (args._[0] || '');
     const {api, shard} = await context(opts);
-    console.log(JSON.stringify(await api.userMemoryGet(args.path, shard), null, 2));
+    const res = await api.userMemoryGet(path, shard);
+    console.log(JSON.stringify(decodeMemoryValue(res?.data), null, 2));
     return;
   }
   if (args.command === 'segment') {
@@ -105,7 +120,6 @@ async function main() {
       all: Boolean(args.all),
       concurrency: args.concurrency,
       noCache: Boolean(args['no-cache']),
-      cacheTtl: args['cache-ttl'],
     });
     if (args.ascii) {
       for (const item of scan.results) {

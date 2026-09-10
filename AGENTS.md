@@ -37,7 +37,7 @@ npm install
 # 正式只读命令
 npm run query -- summary --target main --shard shard2
 npm run query -- room --target main --shard shard2 --room E42N24
-npm run query -- memory --target main --shard shard2 --path rooms.E42N24
+npm run query -- memory rooms.E42N24 --target main --shard shard2   # 路径用位置参数；省略路径即查根
 npm run query -- segment --target main --shard shard2 --id 0
 npm run query -- summary --target season
 npm run query -- world --target season                     # 环境概况：赛季能力、反应堆、世界尺寸
