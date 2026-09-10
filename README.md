@@ -13,6 +13,28 @@ npm ci
 - `main`：正式服，默认 `shard2`，代码分支 `main`
 - `season`：赛季服，默认 `shardSeason`，代码分支 `default`
 
+## 多账号
+
+工具支持多个 Screeps 账号，账号嵌套在所属服务器之下。在 `.screeps.yml` 的 `servers` 下，每个服务器块用自身 `token` 作默认账号，其它账号挂在 `accounts` 子表里：
+
+```yaml
+servers:
+  main:
+    url: https://screeps.com/
+    token: "默认账号token"        # 不带 --account 时使用
+    accounts:
+      yachiyo:                  # 用 --account yachiyo 选择
+        token: "yachiyo的token"
+```
+
+所有命令加 `--account <账号名>` 即切换到该账号；省略则用该服务器的默认账号（行为与多账号之前一致）：
+
+```bash
+npm run query -- account --target main                        # 默认账号
+npm run query -- account --target main --account yachiyo      # Yachiyo
+npm run query -- rooms --target main --shard shard2 --account yachiyo
+```
+
 ## 只读命令
 
 ```bash
@@ -58,7 +80,7 @@ npm run query -- rooms --target season
 `map` 命令说明：
 
 - 范围四选一：`--room` 单房间、`--rooms` 逗号分隔列表、`--around` 中心房间加 `--radius`（默认 1）、`--all` 整个分片（请求很多，慎用）；
-- `--concurrency` 控制并发请求数（默认 4），地形结果默认缓存 60 秒（`--cache-ttl` 毫秒调整，`--no-cache` 关闭），缓存在本地 `.cache/map/`；
+- `--concurrency` 控制并发请求数（默认 4）；地形永不变化，永久缓存在系统临时目录（`--no-cache` 可关闭），房间状态和对象每次实时查询；
 - 默认输出逐房间 JSON（地形统计、能源矿、矿物、赛季资源、反应堆、守护者巢穴、入侵核心）；`--summary-only` 只输出范围汇总；`--ascii` 打印 50×50 文字地形图。
 
 也可以安装为本地命令：

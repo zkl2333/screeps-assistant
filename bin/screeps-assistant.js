@@ -28,7 +28,7 @@ function parseArgs(argv) {
   return args;
 }
 
-function options(args) { return {target: args.target || 'main', shard: args.shard}; }
+function options(args) { return {target: args.target || 'main', shard: args.shard, account: args.account}; }
 
 // Memory 接口返回 {ok, data} 信封；screeps-api 已自动解 gz:，data 只剩 JSON 字符串或已解析的对象。
 function decodeMemoryValue(value) {
