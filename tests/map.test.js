@@ -12,7 +12,10 @@ const {
   terrainAscii,
   terrainSummary,
 } = require('../src/map/analysis');
-const {collectRooms, mapLimit} = require('../src/map/query');
+const {collectRooms, mapLimit, parseCacheTtl, parseConcurrency, readTerrainCache, writeTerrainCache} = require('../src/map/query');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 // 房间名与坐标互转
 assert.deepEqual(parseRoomName('W3N2'), {name: 'W3N2', x: -4, y: -3});
@@ -97,7 +100,27 @@ assert.ok(all.includes('E0S0') && all.includes('E4S4') && all.includes('W4N4') &
 assert.throws(() => collectRooms({all: true}), /世界尺寸/);
 assert.deepEqual(collectRooms({}), []);
 
-// 并发池：不超过并发上限，单个失败不影响整体
+assert.equal(parseConcurrency(undefined), 4);
+assert.equal(parseConcurrency('8'), 8);
+assert.throws(() => parseConcurrency(0), />= 1/);
+assert.throws(() => parseConcurrency('foo'), />= 1/);
+assert.equal(parseCacheTtl(undefined), null);
+assert.equal(parseCacheTtl('60000'), 60000);
+assert.throws(() => parseCacheTtl(0), />= 1/);
+assert.throws(() => parseCacheTtl('bad'), />= 1/);
+
+// 地形缓存：省略 TTL 时永不过期；给出 TTL 后按 mtime 失效
+const cachePath = path.join(os.tmpdir(), `screeps-terrain-cache-${Date.now()}.json`);
+writeTerrainCache(cachePath, [{room: 'E0S0', terrain: '1'}]);
+assert.deepEqual(readTerrainCache(cachePath), [{room: 'E0S0', terrain: '1'}]);
+assert.deepEqual(readTerrainCache(cachePath, 60_000), [{room: 'E0S0', terrain: '1'}]);
+const staleTime = Date.now() - 120_000;
+fs.utimesSync(cachePath, staleTime / 1000, staleTime / 1000);
+assert.equal(readTerrainCache(cachePath, 60_000), null);
+assert.deepEqual(readTerrainCache(cachePath), [{room: 'E0S0', terrain: '1'}]);
+fs.unlinkSync(cachePath);
+
+// 并发池：不超过并发上限，单个失败不影响整体；非法并发直接报错
 async function testMapLimit() {
   let active = 0;
   let peak = 0;
@@ -114,6 +137,8 @@ async function testMapLimit() {
   assert.equal(results[2].ok, false);
   assert.equal(results[2].error, 'boom');
   assert.equal(results.filter(item => item.ok).length, 4);
+  await assert.rejects(() => mapLimit([1], 0, async item => item), />= 1/);
+  await assert.rejects(() => mapLimit([1], 'foo', async item => item), />= 1/);
 }
 
 testMapLimit()

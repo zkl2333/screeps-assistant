@@ -54,16 +54,23 @@ function resolveServerConfig(target, account, file = CONFIG_FILE) {
     throw new Error(`配置里找不到服务器 "${targetConfig(target).server}"；已定义：${defined}`);
   }
 
-  // 深拷贝，避免污染原始配置；账号 token 覆盖默认 token。
+  // 浅拷贝，避免污染原始配置；账号 token 覆盖默认 token。
   const merged = {...serverBlock};
   delete merged.accounts;
+  const serverName = targetConfig(target).server;
+  const definedAccounts = Object.keys(serverBlock.accounts || {});
   if (account) {
     const accountBlock = serverBlock.accounts?.[account];
     if (!accountBlock || !accountBlock.token) {
-      const defined = Object.keys(serverBlock.accounts || {}).join(', ') || '(无)';
-      throw new Error(`服务器 "${targetConfig(target).server}" 下找不到账号 "${account}"；已定义账号：${defined}`);
+      throw new Error(`服务器 "${serverName}" 下找不到账号 "${account}"；已定义账号：${definedAccounts.join(', ') || '(无)'}`);
     }
     Object.assign(merged, accountBlock);
+  } else if (!merged.token && !(merged.email && merged.password)) {
+    // 未选 --account 且服务器块没有默认凭证时，给出可操作提示，避免落到 screeps-api 的泛化错误。
+    const hint = definedAccounts.length
+      ? `请在服务器块设置 token，或用 --account 选择：${definedAccounts.join(', ')}`
+      : '请在服务器块设置 token，或在 accounts 下添加账号后再用 --account 选择';
+    throw new Error(`服务器 "${serverName}" 未配置默认账号 token；${hint}`);
   }
 
   const manager = new ScreepsConfigManager();

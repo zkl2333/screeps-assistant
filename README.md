@@ -48,7 +48,8 @@ npm run query -- rooms --target main --shard shardX
 # 房间现场摘要
 npm run query -- room --target main --shard shard2 --room E41N23
 
-# Memory
+# Memory（路径可用位置参数或 --path；省略即查根）
+npm run query -- memory rooms.E41N23 --target main --shard shard2
 npm run query -- memory --target main --shard shard2 --path rooms.E41N23
 
 # 代码模块摘要
@@ -80,7 +81,8 @@ npm run query -- rooms --target season
 `map` 命令说明：
 
 - 范围四选一：`--room` 单房间、`--rooms` 逗号分隔列表、`--around` 中心房间加 `--radius`（默认 1）、`--all` 整个分片（请求很多，慎用）；
-- `--concurrency` 控制并发请求数（默认 4）；地形永不变化，永久缓存在系统临时目录（`--no-cache` 可关闭），房间状态和对象每次实时查询；
+- `--concurrency` 控制并发请求数（默认 4，必须是 >= 1 的整数）；
+- 地形永不变化，永久缓存在本地 `.cache/map/`（`--no-cache` 关闭；可选 `--cache-ttl` 毫秒强制过期）；房间状态和对象每次实时查询；
 - 默认输出逐房间 JSON（地形统计、能源矿、矿物、赛季资源、反应堆、守护者巢穴、入侵核心）；`--summary-only` 只输出范围汇总；`--ascii` 打印 50×50 文字地形图。
 
 也可以安装为本地命令：
