@@ -119,6 +119,7 @@ async function main() {
       radius: args.radius,
       all: Boolean(args.all),
       concurrency: args.concurrency,
+      cacheTtl: args['cache-ttl'],
       noCache: Boolean(args['no-cache']),
     });
     if (args.ascii) {

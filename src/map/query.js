@@ -5,7 +5,6 @@ const path = require('node:path');
 const {context} = require('../api/client');
 const {featureMap, formatRoomName, getNeighborRooms, summarizeResults, summarizeRoom} = require('./analysis');
 
-const DEFAULT_CACHE_TTL = 60_000;
 const DEFAULT_CONCURRENCY = 4;
 const CACHE_DIR = path.resolve(__dirname, '..', '..', '.cache', 'map');
 
@@ -25,8 +24,28 @@ function collectRooms({room, rooms, around, radius = 1, all = false, worldSize} 
   return [];
 }
 
+/** 解析并发数：必须是 >= 1 的整数。 */
+function parseConcurrency(value, fallback = DEFAULT_CONCURRENCY) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isInteger(n) || n < 1) throw new Error(`concurrency 必须是 >= 1 的整数，收到：${value}`);
+  return n;
+}
+
+/**
+ * 解析地形缓存 TTL（毫秒）。
+ * 省略 / 空 → 永久缓存；给出则必须是 >= 1 的整数。
+ */
+function parseCacheTtl(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isInteger(n) || n < 1) throw new Error(`cache-ttl 必须是 >= 1 的毫秒整数，收到：${value}`);
+  return n;
+}
+
 /** 简单并发池：最多 limit 个任务同时进行，单个失败不影响其他房间。 */
 async function mapLimit(items, limit, fn) {
+  const concurrency = parseConcurrency(limit);
   const result = new Array(items.length);
   let next = 0;
   async function worker() {
@@ -40,7 +59,7 @@ async function mapLimit(items, limit, fn) {
       }
     }
   }
-  await Promise.all(Array.from({length: Math.min(limit, items.length)}, worker));
+  await Promise.all(Array.from({length: Math.min(concurrency, items.length || 1)}, worker));
   return result;
 }
 
@@ -49,38 +68,48 @@ function cacheFile(server, shard, room) {
   return path.join(CACHE_DIR, `${safe}.json`);
 }
 
-function readCache(file, ttl) {
+/** 读取地形缓存；ttl 为 null 时永不过期，否则按 mtime 判断。 */
+function readTerrainCache(file, ttl = null) {
   try {
-    const stat = fs.statSync(file);
-    if (Date.now() - stat.mtimeMs > ttl) return null;
+    if (ttl != null) {
+      const stat = fs.statSync(file);
+      if (Date.now() - stat.mtimeMs > ttl) return null;
+    }
     return JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (_) {
     return null;
   }
 }
 
-function writeCache(file, value) {
+function writeTerrainCache(file, value) {
   fs.mkdirSync(path.dirname(file), {recursive: true});
   const temp = `${file}.tmp`;
   fs.writeFileSync(temp, JSON.stringify(value), 'utf8');
   fs.renameSync(temp, file);
 }
 
-/** 查询并汇总单个房间；地形不变，默认缓存 60 秒。 */
-async function scanRoom(api, server, shard, room, version, {noCache = false, cacheTtl = DEFAULT_CACHE_TTL} = {}) {
+/** 只缓存地形；status / objects 始终实时拉取。 */
+async function loadTerrain(api, server, shard, room, {noCache = false, cacheTtl = null} = {}) {
   const file = cacheFile(server, shard, room);
   if (!noCache) {
-    const cached = readCache(file, cacheTtl);
-    if (cached) return {...cached, cached: true};
+    const cached = readTerrainCache(file, cacheTtl);
+    if (cached != null) return {terrain: cached, cached: true};
   }
-  const [status, terrain, objects] = await Promise.all([
+  const response = await api.gameRoomTerrainUnencoded(room, shard);
+  const terrain = response.terrain;
+  if (!noCache) writeTerrainCache(file, terrain);
+  return {terrain, cached: false};
+}
+
+/** 查询并汇总单个房间；地形永久缓存（可用 cacheTtl / noCache 调整），状态与对象每次实时查询。 */
+async function scanRoom(api, server, shard, room, version, {noCache = false, cacheTtl = null} = {}) {
+  const [status, terrainResult, objects] = await Promise.all([
     api.gameRoomStatus(room, shard),
-    api.gameRoomTerrainUnencoded(room, shard),
+    loadTerrain(api, server, shard, room, {noCache, cacheTtl}),
     api.gameRoomObjects(room, shard),
   ]);
-  const result = summarizeRoom({room, status, terrain: terrain.terrain, objects: objects.objects, version});
-  if (!noCache) writeCache(file, result);
-  return result;
+  const result = summarizeRoom({room, status, terrain: terrainResult.terrain, objects: objects.objects, version});
+  return {...result, terrainCached: terrainResult.cached};
 }
 
 /** 批量扫描房间，返回逐房间结果和范围汇总。 */
@@ -91,8 +120,10 @@ async function scanRooms(options = {}) {
   if (options.all) worldSize = await api.gameWorldSize(shard);
   const roomsToQuery = [...new Set(collectRooms({...options, worldSize}))];
   if (!roomsToQuery.length) throw new Error('map 命令需要 --room、--rooms、--around 或 --all 指定扫描范围');
-  const results = await mapLimit(roomsToQuery, Number(options.concurrency || DEFAULT_CONCURRENCY), room =>
-    scanRoom(api, config.server, shard, room, version, {noCache: Boolean(options.noCache), cacheTtl: Number(options.cacheTtl || DEFAULT_CACHE_TTL)}));
+  const concurrency = parseConcurrency(options.concurrency);
+  const cacheTtl = parseCacheTtl(options.cacheTtl);
+  const results = await mapLimit(roomsToQuery, concurrency, room =>
+    scanRoom(api, config.server, shard, room, version, {noCache: Boolean(options.noCache), cacheTtl}));
   return {target, server: config.server, shard, summary: summarizeResults(results), results};
 }
 
@@ -117,4 +148,17 @@ async function readWorld(options = {}) {
   };
 }
 
-module.exports = {CACHE_DIR, DEFAULT_CACHE_TTL, DEFAULT_CONCURRENCY, collectRooms, mapLimit, readWorld, scanRoom, scanRooms};
+module.exports = {
+  CACHE_DIR,
+  DEFAULT_CONCURRENCY,
+  collectRooms,
+  loadTerrain,
+  mapLimit,
+  parseCacheTtl,
+  parseConcurrency,
+  readTerrainCache,
+  readWorld,
+  scanRoom,
+  scanRooms,
+  writeTerrainCache,
+};

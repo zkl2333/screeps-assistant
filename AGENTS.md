@@ -52,6 +52,7 @@ git diff --check
 # 代码管理（只读拉取）
 npm run pull                  # 只读拉取正式代码
 node tools/backup/pull-code.js main ./dist # 拉取指定分支到指定目录
+node tools/backup/pull-code.js main ./dist --target main --account yachiyo # 多账号拉取
 ```
 
 ## 配置说明
