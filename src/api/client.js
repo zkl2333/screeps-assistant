@@ -89,8 +89,25 @@ async function context(options = {}) {
   return {...resolved, accountAlias: options.account || null, api, account};
 }
 
+// GCL 升级公式常量来自官方引擎同源包（github.com/screeps/common），随依赖更新，不自行维护。
+// 等级 = floor((gcl/GCL_MULTIPLY)^(1/GCL_POW)) + 1。
+const {GCL_MULTIPLY, GCL_POW} = require('@screeps/common/lib/constants');
+
+/**
+ * 把累计 GCL 经验解析为等级阶梯：当前等级、本级起点、升下一级所需总量与累计门槛。
+ * 服务器只返回累计经验（如 13163017），阶梯数量由公式推导，无需硬编码整张表。
+ */
+function gclProgress(gcl) {
+  const total = Number(gcl);
+  if (!Number.isFinite(total) || total < 0) return null;
+  const level = Math.floor(Math.pow(total / GCL_MULTIPLY, 1 / GCL_POW)) + 1;
+  const base = Math.pow(level - 1, GCL_POW) * GCL_MULTIPLY;
+  const next = Math.pow(level, GCL_POW) * GCL_MULTIPLY;
+  return {level, progress: total - base, progressTotal: next - base, nextAt: next};
+}
+
 function accountSummary(account) {
-  return {id: account?._id, username: account?.username, cpu: account?.cpu, gcl: account?.gcl, money: account?.money, credits: account?.credits, pixels: account?.resources?.pixel};
+  return {id: account?._id, username: account?.username, cpu: account?.cpu, gcl: account?.gcl, gclProgress: gclProgress(account?.gcl), money: account?.money, credits: account?.credits, pixels: account?.resources?.pixel};
 }
 
 function objectSummary(objects, userId) {
@@ -123,4 +140,4 @@ async function readSummary(options = {}) {
   return {target, server: config.server, app: config.app, shard, codeBranch: config.codeBranch, account: accountSummary(account), gameTime: time?.time, rooms: rooms?.shards?.[shard] || [], shardInfo: shards?.shards?.find(item => item.name === shard) || null, codeModules: Object.keys(code?.modules || {})};
 }
 
-module.exports = {TARGETS, accountSummary, context, objectSummary, openClient, readSummary, resolveServerConfig, resolveTarget, targetConfig};
+module.exports = {TARGETS, accountSummary, context, gclProgress, objectSummary, openClient, readSummary, resolveServerConfig, resolveTarget, targetConfig};

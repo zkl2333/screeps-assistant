@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const {TARGETS, objectSummary, resolveServerConfig, resolveTarget} = require('../src/api/client');
+const {TARGETS, gclProgress, objectSummary, resolveServerConfig, resolveTarget} = require('../src/api/client');
 
 assert.deepEqual(Object.keys(TARGETS), ['main', 'season']);
 assert.equal(resolveTarget({target: 'main'}).shard, 'shard2');
@@ -12,6 +12,17 @@ assert.equal(resolveTarget({target: 'season'}).shard, 'shardSeason');
 assert.equal(resolveTarget({target: 'main', shard: 'shardX'}).shard, 'shardX');
 assert.throws(() => resolveTarget({target: 'season', shard: 'shard2'}), /不支持分片/);
 assert.throws(() => resolveTarget({target: 'unknown'}), /不支持目标/);
+
+// GCL 阶梯：常量来自 @screeps/common，数值本身由 package-lock 保证，此处只测公式逻辑，
+// 期望值用同一常量构造——等级边界在 GCL_MULTIPLY * n^GCL_POW 处，取整方向 floor，边界上 progress 归零。
+const {GCL_MULTIPLY} = require('@screeps/common/lib/constants');
+assert.equal(gclProgress(GCL_MULTIPLY - 0.01).level, 1);
+const level2 = gclProgress(GCL_MULTIPLY);
+assert.equal(level2.level, 2);
+assert.ok(Math.abs(level2.progress) < 1e-6);
+assert.equal(gclProgress(-1), null);
+assert.equal(gclProgress(undefined), null);
+assert.equal(gclProgress('abc'), null);
 
 const summary = objectSummary([
   {type: 'controller', level: 4, x: 10, y: 10, user: 'me'},

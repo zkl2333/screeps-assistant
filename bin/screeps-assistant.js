@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-const {context, objectSummary, readSummary, resolveTarget} = require('../src/api/client');
+const {context, gclProgress, objectSummary, readSummary, resolveTarget} = require('../src/api/client');
 const {readWorld, scanRooms} = require('../src/map/query');
 const {terrainAscii} = require('../src/map/analysis');
 
@@ -49,7 +49,8 @@ async function main() {
   }
   if (args.command === 'account') {
     const {account} = await context(opts);
-    console.log(JSON.stringify(account, null, 2));
+    // 附上 GCL 阶梯解析，原始字段保持不变。
+    console.log(JSON.stringify({...account, gclProgress: gclProgress(account.gcl)}, null, 2));
     return;
   }
   if (args.command === 'rooms') {

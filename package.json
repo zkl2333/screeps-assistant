@@ -16,6 +16,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@screeps/common": "^2.16.1",
     "screeps-api": "^2.1.0"
   }
 }
