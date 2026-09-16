@@ -1,6 +1,6 @@
 # Screeps Assistant
 
-Screeps 外部读取、实时连接、代码备份和数据分析工具。正式服与赛季服使用同一套只读命令，但通过不同目标配置隔离。
+Screeps 外部读取、游戏内表达式执行、实时连接、代码备份和数据分析工具。正式服与赛季服使用同一套命令，但通过不同目标配置隔离。
 
 ## 安装
 
@@ -35,7 +35,7 @@ npm run query -- account --target main --account yachiyo      # Yachiyo
 npm run query -- rooms --target main --shard shard2 --account yachiyo
 ```
 
-## 只读命令
+## 查询与 Console 命令
 
 ```bash
 # 账号
@@ -51,6 +51,10 @@ npm run query -- room --target main --shard shard2 --room E41N23
 # Memory（路径可用位置参数或 --path；省略即查根）
 npm run query -- memory rooms.E41N23 --target main --shard shard2
 npm run query -- memory --target main --shard shard2 --path rooms.E41N23
+
+# 游戏内 Console：执行表达式并取回输出（表达式需产生返回值或 console.log）
+npm run query -- console "JSON.stringify(Game.gcl)" --target main
+npm run query -- console Game.time --target season --timeout 20000
 
 # 代码模块摘要
 npm run query -- code --target main --branch main
@@ -109,15 +113,12 @@ skills/                    Screeps 专用知识
 
 ## 安全边界
 
-本项目默认只做读取：
+按能力分四层，查询只读、console 透传是唯二的例外通道：
 
-- 不写线上 Memory 或 Segment；
-- 不执行线上 Console；
-- 不上传代码；
-- 不买卖市场资源；
-- 不发送消息或标记已读；
-- 不创建建筑、旗帜或 Intent；
-- 不执行重生、放弃房间等游戏操作。
+- **环境隔离**：只连白名单目标（`main`/`season`）与白名单分片，凭据本地 `.screeps.yml` 不提交，多账号用 `--account` 显式切换；
+- **查询只读**：查询命令全部调用读取 API，不产生任何游戏副作用；
+- **console 透传**：`console` 命令执行用户显式输入的游戏内表达式并原样返回输出。表达式在服务器端 eval，能力等同官方游戏内控制台——是否写入由表达式决定，工具不代写、不审查、不自动重试；
+- **无工具级写入**：不提供代码上传、市场交易、消息发送或标记已读、建筑/旗帜/Intent 创建、重生或放弃房间的命令；bot 正式代码发布只走 `screeps-bot` 的 GitHub Actions，本工具不是旁路发布通道。
 
 正式 Bot 代码只能通过 GitHub Actions 发布，不能从本项目旁路上传。
 

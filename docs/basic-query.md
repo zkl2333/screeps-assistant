@@ -26,7 +26,7 @@ servers:
 
 也兼容 `host` / `protocol` / `path` 写法（由 `screeps-api` 归一化为 `url`）。
 
-## 常用只读命令
+## 常用命令
 
 ```bash
 # 摘要 / 账号 / 房间
@@ -37,6 +37,10 @@ npm run query -- rooms --target season
 # Memory：路径可用位置参数或 --path；省略即查根
 npm run query -- memory rooms.E41N23 --target main --shard shard2
 npm run query -- memory --target main --shard shard2 --path rooms.E41N23
+
+# 游戏内 Console：执行表达式并取回输出（表达式需产生返回值或 console.log）
+npm run query -- console "JSON.stringify(Game.gcl)" --target main
+npm run query -- console Game.time --target season --timeout 20000
 
 # 环境概况与地图分析
 npm run query -- world --target season
@@ -56,7 +60,10 @@ node tools/live/websocket.js --target main --account yachiyo
 
 ## 设计边界
 
-- 服务器和分片必须显式经过白名单校验，避免把请求发错环境。
-- `main` 和 `season` 使用独立的客户端配置与代码分支。
-- 这是只读查询层；不提供 Memory、Console、市场、消息或代码写入入口。
+完整分层定义见根目录 README 的"安全边界"；本页摘要：
+
+- **环境隔离**：服务器与分片必须经过白名单校验，避免把请求发错环境；`main` 和 `season` 使用独立的客户端配置与代码分支。
+- **查询只读**：所有查询命令只调用读取 API，不产生游戏副作用。
+- **console 透传**：`console` 执行用户显式给出的表达式并原样返回输出，能力等同官方游戏内控制台；写入与否由表达式决定，工具不代写、不审查、不自动重试。
+- **无工具级写入**：不提供代码上传、市场交易、消息发送、建筑/旗帜/Intent 创建、重生或放弃房间的命令；bot 代码发布只走 `screeps-bot` 的 GitHub Actions。
 - 现有监控、简报和 cron 暂不迁移到这个入口；`tools/briefs/` 重新适配前不要运行。

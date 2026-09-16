@@ -2,6 +2,7 @@
 'use strict';
 
 const {context, gclProgress, objectSummary, readSummary, resolveTarget} = require('../src/api/client');
+const {runConsole} = require('../src/api/console');
 const {readWorld, scanRooms} = require('../src/map/query');
 const {terrainAscii} = require('../src/map/analysis');
 
@@ -78,6 +79,13 @@ async function main() {
     if (args.id === undefined) throw new Error('segment 命令需要 --id，多个 Segment 用逗号分隔');
     const {api, shard} = await context(opts);
     console.log(JSON.stringify({target: opts.target, shard, segments: await api.userMemorySegmentGet(args.id, shard)}, null, 2));
+    return;
+  }
+  if (args.command === 'console') {
+    // 表达式必填，可用位置参数或 --expr 传入；位置参数按空格拼回，免得必须加引号。
+    const expression = args._.length ? args._.join(' ') : args.expr;
+    if (!expression) throw new Error('console 命令需要游戏内表达式，如：console "JSON.stringify(Game.gcl)"');
+    console.log(JSON.stringify(await runConsole(opts, expression, Number(args.timeout || 0) || undefined), null, 2));
     return;
   }
   if (args.command === 'code') {

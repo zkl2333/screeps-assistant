@@ -2,7 +2,7 @@
 
 基于 [screepers/node-screeps-api](https://github.com/screepers/node-screeps-api)（社区维护的非官方封装）的 Screeps 外部 HTTP + WebSocket API 命令行工具集。
 
-这是 Screeps 的外部工具与通用游戏知识仓库，提供房间与账号信息读取、实时监控、数据分析、代码只读备份，以及不依赖具体 Bot 框架的游戏机制和策略资料。bot 的设计与实现不在本仓库维护。
+这是 Screeps 的外部工具与通用游戏知识仓库，提供房间与账号信息读取、游戏内 Console 表达式执行、实时监控、数据分析、代码只读备份，以及不依赖具体 Bot 框架的游戏机制和策略资料。bot 的设计与实现不在本仓库维护。
 
 ## 技术栈
 
@@ -16,8 +16,8 @@
 ```
 ├── .screeps.yml          # 本地 API 配置（含 token，已 gitignore）
 ├── bin/
-│   └── screeps-assistant.js # 正式只读命令入口
-├── src/api/              # 目标配置与只读 API 封装
+│   └── screeps-assistant.js # 正式命令入口（查询只读 + console 透传）
+├── src/api/              # 目标配置、只读 API 与 console 执行
 ├── src/map/              # 跨环境地图分析（纯函数）与联网扫描
 ├── tools/backup/         # 线上代码只读备份
 ├── tools/live/           # WebSocket、CPU 采样和暂存监控工具
@@ -34,11 +34,12 @@
 # 安装依赖
 npm install
 
-# 正式只读命令
+# 正式命令（查询只读 + console 透传）
 npm run query -- summary --target main --shard shard2
 npm run query -- room --target main --shard shard2 --room E42N24
 npm run query -- memory rooms.E42N24 --target main --shard shard2   # 路径用位置参数；省略路径即查根
 npm run query -- segment --target main --shard shard2 --id 0
+npm run query -- console "JSON.stringify(Game.gcl)" --target main   # 游戏内表达式执行
 npm run query -- summary --target season
 npm run query -- world --target season                     # 环境概况：赛季能力、反应堆、世界尺寸
 npm run query -- map --target season --around E5S5 --radius 2  # 地图分析：地形、资源、反应堆
@@ -124,6 +125,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
 
 - 本地 simulator / 私服调试：可用 `push-sim` / `push-pserver` 等，**不得**用于官方服正式 `main`
 - 只读查询、监控、拉代码、分析 Memory：允许直接用 API
+- console 表达式：允许执行，但表达式必须由用户显式给出或经用户确认；写入类表达式（改 Memory、执行游戏动作）不得自行构造
 
 ### 违规后果与纠偏
 
@@ -148,14 +150,16 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
 
 **screeps-assistant** 只维护 Screeps 外部工具。后续工作围绕以下职责展开：
 
-- **读取状态：** 查询账号、Shard、房间、资源、敌情、Memory、Console 和运行状态。
+- **读取状态：** 查询账号、Shard、房间、资源、敌情、Memory 和运行状态。
+- **Console 执行：** 透传用户显式给出的游戏内表达式并原样返回输出，不代写、不审查、不自动重试。
 - **监控分析：** 提供 HTTP / WebSocket 采集、结构化输出和通用分析能力。
 - **代码备份：** 从 Screeps 只读拉取代码，辅助核对线上版本。
 - **工具开发：** 修改本项目的 API 客户端、查询命令和分析脚本。
 - **仓库边界：** 通用游戏知识可进入本仓库；TI 或当前 bot 的设计、实现计划、源码改动、发布结果和验收记录全部进入 `screeps-bot`。
 - **检查 CI：** 使用本仓库工具核对 bot 线上状态时，仍必须以 GitHub Actions 发布结果为准，不得改用本地 API 直推作为“补救”。
 - **操作边界：**
-  - 普通查询和只读分析可直接执行
+  - 查询和只读分析可直接执行
+  - console 只执行用户显式给出或确认过的表达式；写入类表达式（改 Memory、执行游戏动作）不得自行构造
   - 重生、放弃房间等不可逆游戏操作，执行前必须明确告知影响
   - **bot 正式部署只能走 GitHub Actions，禁止直接 API 提交代码**
 
