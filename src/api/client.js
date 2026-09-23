@@ -110,9 +110,18 @@ function accountSummary(account) {
   return {id: account?._id, username: account?.username, cpu: account?.cpu, gcl: account?.gcl, gclProgress: gclProgress(account?.gcl), money: account?.money, credits: account?.credits, pixels: account?.resources?.pixel};
 }
 
+/**
+ * 房间对象摘要。
+ *
+ * 结构计数字段语义（易误读，务必注意）：
+ * - towers / spawns / labs / factories：房间内该类型建筑总数（含敌方），用于房间情报；
+ * - ownTowers / ownSpawns / ownLabs / ownFactories：仅当前账号拥有的数量；
+ * - storageEnergy / terminalEnergy / spawning / constructionSites：仍为己方专用。
+ */
 function objectSummary(objects, userId) {
   const owned = objects.filter(item => item.user === userId);
-  const count = type => owned.filter(item => item.type === type).length;
+  const countAll = type => objects.filter(item => item.type === type).length;
+  const countOwn = type => owned.filter(item => item.type === type).length;
   const controller = objects.find(item => item.type === 'controller');
   const storage = owned.find(item => item.type === 'storage');
   const terminal = owned.find(item => item.type === 'terminal');
@@ -120,13 +129,17 @@ function objectSummary(objects, userId) {
   return {
     rcl: controller?.level,
     controller: controller ? {x: controller.x, y: controller.y, owner: controller.user, reservation: controller.reservation} : null,
-    spawns: count('spawn'),
+    spawns: countAll('spawn'),
+    ownSpawns: countOwn('spawn'),
     spawning: owned.filter(item => item.type === 'spawn' && item.spawning).map(item => item.spawning.name),
     storageEnergy: storage?.store?.energy,
     terminalEnergy: terminal?.store?.energy,
-    towers: count('tower'),
-    labs: count('lab'),
-    factories: count('factory'),
+    towers: countAll('tower'),
+    ownTowers: countOwn('tower'),
+    labs: countAll('lab'),
+    ownLabs: countOwn('lab'),
+    factories: countAll('factory'),
+    ownFactories: countOwn('factory'),
     constructionSites: objects.filter(item => item.type === 'constructionSite' && item.user === userId).length,
     portals: objects.filter(item => item.type === 'portal').map(item => ({x: item.x, y: item.y, destination: item.destination})),
     ownCreeps: creeps.filter(item => item.user === userId).map(item => ({name: item.name, x: item.x, y: item.y, role: item.role, squadName: item.squadName, body: item.body?.map(part => part.type || part)})),

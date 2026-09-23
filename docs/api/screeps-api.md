@@ -63,6 +63,14 @@
 - Mineral：`objects.find(o => o.type === 'mineral')?.mineralType`
 - 房间选择时应同时考虑占领状态、Source 数量、Keeper 和矿物，不能只比较 Source 数量。
 
+## `objectSummary` 房间摘要字段
+
+- **状态：** `verified`
+- **来源：** `src/api/client.js` → `objectSummary(objects, userId)`，由 `npm run query -- room` 输出。
+- `towers` / `spawns` / `labs` / `factories`：房间内该类型建筑**总数**（含敌方），用于敌情判断；勿当作己方数量。
+- `ownTowers` / `ownSpawns` / `ownLabs` / `ownFactories`：仅当前账号拥有的数量。
+- `storageEnergy` / `terminalEnergy` / `spawning` / `constructionSites`：仍只统计己方。
+
 ## 仍需按次确认
 
 - Respawn Area 是否存在可直接查询“所有者”的专用端点。

@@ -24,20 +24,61 @@ assert.equal(gclProgress(-1), null);
 assert.equal(gclProgress(undefined), null);
 assert.equal(gclProgress('abc'), null);
 
-const summary = objectSummary([
+// 己方房间：房间级计数与 own* 一致；spawning / storage 仍为己方。
+const ownRoom = objectSummary([
   {type: 'controller', level: 4, x: 10, y: 10, user: 'me'},
   {type: 'spawn', user: 'me', spawning: {name: 'worker'}},
+  {type: 'tower', user: 'me'},
+  {type: 'tower', user: 'me'},
+  {type: 'lab', user: 'me'},
+  {type: 'factory', user: 'me'},
   {type: 'storage', user: 'me', store: {energy: 123}},
   {type: 'portal', x: 1, y: 2, destination: {room: 'E1N1', shard: 'shardX'}},
   {type: 'creep', user: 'me', name: 'a', x: 3, y: 4, body: [{type: 'move'}]},
   {type: 'creep', user: 'enemy', name: 'b', x: 5, y: 6, body: [{type: 'attack'}]},
 ], 'me');
-assert.equal(summary.rcl, 4);
-assert.equal(summary.storageEnergy, 123);
-assert.deepEqual(summary.spawning, ['worker']);
-assert.equal(summary.ownCreeps.length, 1);
-assert.equal(summary.hostileCreeps.length, 1);
-assert.equal(summary.portals.length, 1);
+assert.equal(ownRoom.rcl, 4);
+assert.equal(ownRoom.storageEnergy, 123);
+assert.deepEqual(ownRoom.spawning, ['worker']);
+assert.equal(ownRoom.spawns, 1);
+assert.equal(ownRoom.ownSpawns, 1);
+assert.equal(ownRoom.towers, 2);
+assert.equal(ownRoom.ownTowers, 2);
+assert.equal(ownRoom.labs, 1);
+assert.equal(ownRoom.ownLabs, 1);
+assert.equal(ownRoom.factories, 1);
+assert.equal(ownRoom.ownFactories, 1);
+assert.equal(ownRoom.ownCreeps.length, 1);
+assert.equal(ownRoom.hostileCreeps.length, 1);
+assert.equal(ownRoom.portals.length, 1);
+
+// 敌方房间：towers/spawns 等为房间级（含敌方），own* 为 0；storageEnergy 仍只看己方。
+const enemyRoom = objectSummary([
+  {type: 'controller', level: 6, x: 20, y: 20, user: 'enemy'},
+  {type: 'spawn', user: 'enemy'},
+  {type: 'tower', user: 'enemy'},
+  {type: 'tower', user: 'enemy'},
+  {type: 'tower', user: 'enemy'},
+  {type: 'lab', user: 'enemy'},
+  {type: 'lab', user: 'enemy'},
+  {type: 'factory', user: 'enemy'},
+  {type: 'storage', user: 'enemy', store: {energy: 999}},
+  {type: 'creep', user: 'enemy', name: 'guard', x: 1, y: 1, body: [{type: 'attack'}]},
+], 'me');
+assert.equal(enemyRoom.rcl, 6);
+assert.equal(enemyRoom.controller.owner, 'enemy');
+assert.equal(enemyRoom.towers, 3);
+assert.equal(enemyRoom.ownTowers, 0);
+assert.equal(enemyRoom.spawns, 1);
+assert.equal(enemyRoom.ownSpawns, 0);
+assert.equal(enemyRoom.labs, 2);
+assert.equal(enemyRoom.ownLabs, 0);
+assert.equal(enemyRoom.factories, 1);
+assert.equal(enemyRoom.ownFactories, 0);
+assert.equal(enemyRoom.storageEnergy, undefined);
+assert.deepEqual(enemyRoom.spawning, []);
+assert.equal(enemyRoom.ownCreeps.length, 0);
+assert.equal(enemyRoom.hostileCreeps.length, 1);
 
 function writeFixture(contents) {
   const file = path.join(os.tmpdir(), `screeps-assistant-config-${Date.now()}-${Math.random().toString(16).slice(2)}.yml`);

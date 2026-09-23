@@ -82,6 +82,8 @@ npm run query -- summary --target season
 npm run query -- rooms --target season
 ```
 
+`room` 摘要字段：`towers` / `spawns` / `labs` / `factories` 为房间内该类型建筑总数（含敌方）；`ownTowers` / `ownSpawns` / `ownLabs` / `ownFactories` 为己方数量；`storageEnergy` / `terminalEnergy` / `spawning` 仍只统计己方。
+
 `map` 命令说明：
 
 - 范围四选一：`--room` 单房间、`--rooms` 逗号分隔列表、`--around` 中心房间加 `--radius`（默认 1）、`--all` 整个分片（请求很多，慎用）；
