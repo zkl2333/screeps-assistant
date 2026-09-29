@@ -106,8 +106,6 @@ src/api/                   目标配置、只读 API 和摘要函数
 src/map/                   跨环境地图分析（纯函数）和联网扫描
 tools/backup/              线上代码只读备份
 tools/live/                WebSocket 和 CPU 采样
-tools/analysis/            房间、历史数据分析
-tools/briefs/              旧简报工具，重新适配前不运行
 tests/                     本地测试
 docs/                      API 和使用文档
 skills/                    Screeps 专用知识
@@ -131,4 +129,4 @@ npm test
 git diff --check
 ```
 
-计划任务暂时全部暂停。新的监控和简报应在基础查询入口稳定后重新设计，不继续兼容旧脚本。
+一次性查询结果写到系统临时目录。仓库根目录不保留房间快照、Memory 导出或控制台表达式碎片。

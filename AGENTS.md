@@ -20,9 +20,7 @@
 ├── src/api/              # 目标配置、只读 API 与 console 执行
 ├── src/map/              # 跨环境地图分析（纯函数）与联网扫描
 ├── tools/backup/         # 线上代码只读备份
-├── tools/live/           # WebSocket、CPU 采样和暂存监控工具
-├── tools/analysis/       # 房间、历史数据分析工具
-├── tools/briefs/         # 旧简报工具，重新适配前不运行
+├── tools/live/           # WebSocket 与 CPU 采样
 ├── tests/                # 本地测试与 fixture
 ├── docs/                 # API、使用说明、通用游戏知识和参考资料
 └── skills/               # Screeps 专用技能

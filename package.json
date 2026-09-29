@@ -1,7 +1,7 @@
 {
   "name": "screeps-assistant",
   "version": "1.0.0",
-  "description": "Screeps Assistant — 玩家本人的 AI 助理",
+  "description": "Screeps 外部读取、实时监控与代码备份工具",
   "main": "bin/screeps-assistant.js",
   "bin": {
     "screeps-assistant": "bin/screeps-assistant.js"

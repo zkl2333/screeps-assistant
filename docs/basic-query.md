@@ -66,4 +66,3 @@ node tools/live/websocket.js --target main --account yachiyo
 - **查询只读**：所有查询命令只调用读取 API，不产生游戏副作用。
 - **console 透传**：`console` 执行用户显式给出的表达式并原样返回输出，能力等同官方游戏内控制台；写入与否由表达式决定，工具不代写、不审查、不自动重试。
 - **无工具级写入**：不提供代码上传、市场交易、消息发送、建筑/旗帜/Intent 创建、重生或放弃房间的命令；bot 代码发布只走 `screeps-bot` 的 GitHub Actions。
-- 现有监控、简报和 cron 暂不迁移到这个入口；`tools/briefs/` 重新适配前不要运行。
