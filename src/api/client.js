@@ -10,6 +10,7 @@ const CONFIG_FILE = path.join(__dirname, '..', '..', '.screeps.yml');
 const TARGETS = Object.freeze({
   main: Object.freeze({server: 'main', app: 'default', shards: ['shard0', 'shard1', 'shard2', 'shard3', 'shardX'], defaultShard: 'shard2', codeBranch: 'main'}),
   season: Object.freeze({server: 'season', app: 'season11', shards: ['shardSeason'], defaultShard: 'shardSeason', codeBranch: 'default'}),
+  pserver: Object.freeze({server: 'pserver', app: 'pserver', shards: ['shard0'], defaultShard: 'shard0', codeBranch: 'default'}),
 });
 
 function targetConfig(target = 'main') {
@@ -79,7 +80,12 @@ function resolveServerConfig(target, account, file = CONFIG_FILE) {
 
 async function openClient(target = 'main', account) {
   const config = resolveServerConfig(target, account);
-  return new ScreepsHttpClient(config);
+  const api = new ScreepsHttpClient(config);
+  // 私服账密配置：构造函数不会自动登录，显式走一遍 signin 换取会话 token。
+  if (!config.server.token && config.server.email && config.server.password) {
+    await api.auth(new Error(`无法登录 ${config.server.url}，请检查 email/password 配置`));
+  }
+  return api;
 }
 
 async function context(options = {}) {
