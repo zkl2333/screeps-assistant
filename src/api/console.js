@@ -42,12 +42,18 @@ class ConsoleProtocolError extends ConsoleError {
 }
 
 class ConsoleExpressionError extends ConsoleError {
-  constructor(error, {tick, attempts} = {}) {
+  constructor(error, {tick, attempts, compact = true} = {}) {
     const text = String(error);
-    super('expression', formatExpressionError(text));
+    super('expression', compact ? formatExpressionError(text) : text);
     this.fullError = text;
     this.tick = tick;
     this.attempts = attempts;
+  }
+}
+
+class ConsoleClosedError extends ConsoleError {
+  constructor(message = 'console 会话已关闭，当前请求已取消') {
+    super('closed', message);
   }
 }
 
@@ -143,7 +149,6 @@ function createPendingRequest({id, raw, now, attempts}) {
 async function openConsoleSession(options = {}, deps = {}) {
   const resolvedContext = deps.context || context;
   const send = deps.send || ((api, expression, shard) => api.userConsole(expression, shard));
-  const sleep = deps.sleep || (ms => new Promise(resolve => setTimeout(resolve, ms)));
   const now = deps.now || (() => Date.now());
   const log = deps.log || (message => console.error(message));
   const setTimer = deps.setTimeout || setTimeout;
@@ -165,7 +170,10 @@ async function openConsoleSession(options = {}, deps = {}) {
     if (data.error !== undefined && data.error !== null) {
       current.recordServerError(data.error);
       if (current.raw) {
-        current.reject(new ConsoleExpressionError(`表达式执行出错：${data.error}`, {attempts: current.attempts}));
+        current.reject(new ConsoleExpressionError(`表达式执行出错：${data.error}`, {
+          attempts: current.attempts,
+          compact: false,
+        }));
       }
       return;
     }
@@ -203,13 +211,30 @@ async function openConsoleSession(options = {}, deps = {}) {
     throw error;
   }
 
+  async function waitForBackoff(pendingRequest, delay) {
+    let timer;
+    const backoff = new Promise(resolve => {
+      timer = setTimer(resolve, delay);
+    });
+    try {
+      await Promise.race([backoff, pendingRequest.response]);
+      if (pendingRequest.settled) return await pendingRequest.response;
+      return null;
+    } finally {
+      clearTimer(timer);
+    }
+  }
+
   async function waitForAttempt(pendingRequest, expression, timeoutMs) {
     let timeoutTimer;
     const timeout = new Promise((_, reject) => {
       timeoutTimer = setTimer(() => reject(new AttemptTimeoutError()), timeoutMs);
     });
     const sending = Promise.resolve()
-      .then(() => send(api, expression, shard))
+      .then(() => {
+        if (closed) throw new ConsoleClosedError();
+        return send(api, expression, shard);
+      })
       .then(result => {
         if (result && result.error !== undefined && result.error !== null) {
           throw new ConsoleRejectedError(`console 请求被服务器拒绝：${result.error}`, result);
@@ -224,7 +249,10 @@ async function openConsoleSession(options = {}, deps = {}) {
 
     try {
       const first = await Promise.race([guardedSending, pendingRequest.response, timeout]);
-      if (first?.error !== undefined) throw first.error;
+      if (first?.error !== undefined) {
+        if (pendingRequest.settled) return await pendingRequest.response;
+        throw first.error;
+      }
       if (pendingRequest.settled) return await pendingRequest.response;
       return await Promise.race([pendingRequest.response, timeout]);
     } finally {
@@ -233,7 +261,8 @@ async function openConsoleSession(options = {}, deps = {}) {
   }
 
   async function run(code, opts = {}) {
-    if (closed) throw new Error('console 会话已关闭');
+    if (closed) throw new ConsoleClosedError('console 会话已关闭');
+    if (pending) throw new Error('console 会话已有未完成请求，不能并发 run');
     if (typeof code !== 'string') throw new TypeError('表达式必须是字符串');
     const raw = Boolean(opts.raw);
     let retries = opts.retries === undefined ? (raw ? 0 : DEFAULT_RETRIES) : opts.retries;
@@ -257,12 +286,21 @@ async function openConsoleSession(options = {}, deps = {}) {
     pending = current;
 
     while (true) {
+      if (closed) throw new ConsoleClosedError();
       attempts += 1;
       try {
         const response = await waitForAttempt(current, expression, timeoutMs);
         pending = null;
         return formatSuccess(response, shard, attempts);
       } catch (error) {
+        if (current.settled) {
+          pending = null;
+          return formatSuccess(await current.response, shard, attempts);
+        }
+        if (closed || error instanceof ConsoleClosedError) {
+          pending = null;
+          throw error instanceof ConsoleClosedError ? error : new ConsoleClosedError();
+        }
         if (error instanceof ConsoleExpressionError || error instanceof ConsoleProtocolError || error instanceof ConsoleRejectedError || error instanceof ConsoleRateLimitError) {
           pending = null;
           throw error;
@@ -278,6 +316,7 @@ async function openConsoleSession(options = {}, deps = {}) {
         // 其他发送失败按普通失败尝试处理；等待期间晚到的回包仍可成功。
       }
 
+      if (closed) throw new ConsoleClosedError();
       if (attempts > retries) {
         const errors = current.serverErrors;
         pending = null;
@@ -292,9 +331,8 @@ async function openConsoleSession(options = {}, deps = {}) {
       const delay = Math.min(8000 * (2 ** (attempts - 1)), 15000);
       log(`console 第 ${attempts} 次未收到回包，${Math.round(delay / 1000)}s 后按同一请求 ID 重试…`);
       try {
-        await Promise.race([sleep(delay), current.response]);
-        if (current.settled) {
-          const response = await current.response;
+        const response = await waitForBackoff(current, delay);
+        if (response) {
           pending = null;
           return formatSuccess(response, shard, attempts);
         }
@@ -308,9 +346,13 @@ async function openConsoleSession(options = {}, deps = {}) {
   async function close() {
     if (closed) return;
     closed = true;
+    const current = pending;
     pending = null;
+    current?.reject(new ConsoleClosedError());
     try {
       await api.socket.unsubscribe?.('console', listener);
+    } catch {
+      // 断开连接是关键清理；unsubscribe 失败不覆盖请求结果。
     } finally {
       api.socket.disconnect?.();
     }
@@ -336,13 +378,13 @@ async function runConsoleRepeat(session, expression, options = {}, deps = {}) {
   const stats = {processed: 0, successful: 0, failed: 0, total: times, interrupted: false};
 
   for (let index = 0; index < times; index += 1) {
-    if (index > 0 && shouldStop()) {
+    if (shouldStop()) {
       stats.interrupted = true;
       break;
     }
     const wait = t0 + index * intervalMs - now();
     if (wait > 0) await sleep(wait);
-    if (index > 0 && shouldStop()) {
+    if (shouldStop()) {
       stats.interrupted = true;
       break;
     }
@@ -384,6 +426,7 @@ async function runConsole(options, expression, opts = {}) {
 }
 
 module.exports = {
+  ConsoleClosedError,
   ConsoleError,
   ConsoleExpressionError,
   ConsoleProtocolError,
