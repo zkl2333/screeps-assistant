@@ -110,7 +110,7 @@ function helpText() {
   return `Screeps Assistant
 
 Windows 注意：不要通过 npm run query -- 传 console 表达式。cmd.exe 会把 >、|、&、^、% 当特殊字符；
-请使用 node bin/screeps-assistant.js console --file probe.js，或用 echo ... | node ... console --file -。
+请使用 node bin/screeps-assistant.js console --file probe.js，或用 stdin 重定向 node ... console --file -。
 Git Bash 会改写以 / 开头的参数，表达式同样建议来自文件或 stdin。
 
 用法：screeps-assistant <command> [flags] [positional...]
@@ -127,7 +127,10 @@ Git Bash 会改写以 / 开头的参数，表达式同样建议来自文件或 s
 console 常用：
   node bin/screeps-assistant.js console --file probe.js --target main --shard shard2
   node bin/screeps-assistant.js console --expr "Game.time" --retry 2 --timeout 15000
-  node bin/screeps-assistant.js console --file - --envelope
+  node bin/screeps-assistant.js console --file - --envelope < probe.js
+  node bin/screeps-assistant.js console --file - --target main <<'EOF'
+  Object.values(Game.creeps).length
+EOF
   node bin/screeps-assistant.js console --file probe.js --repeat 10 --times 10
   node bin/screeps-assistant.js console --file probe.js --raw --retry 0
 

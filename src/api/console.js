@@ -5,6 +5,7 @@ const {
   assertExpressionSize,
   createRequestId,
   parseResponse,
+  unwrapValue,
   wrapExpression,
 } = require('./console-protocol');
 
@@ -34,9 +35,17 @@ class ConsoleRateLimitError extends ConsoleError {
   }
 }
 
+class ConsoleProtocolError extends ConsoleError {
+  constructor(message) {
+    super('protocol', message);
+  }
+}
+
 class ConsoleExpressionError extends ConsoleError {
-  constructor(message, {tick, attempts} = {}) {
-    super('expression', message);
+  constructor(error, {tick, attempts} = {}) {
+    const text = String(error);
+    super('expression', formatExpressionError(text));
+    this.fullError = text;
     this.tick = tick;
     this.attempts = attempts;
   }
@@ -68,6 +77,12 @@ function rateLimitFromResponse(response, fallback = {}) {
   };
 }
 
+function formatExpressionError(error) {
+  const lines = String(error).replace(/\r/g, '').split('\n').map(line => line.replace(/\s+$/, '')).filter(Boolean);
+  const at = lines.find(line => line.trimStart().startsWith('at '));
+  return at ? `${lines[0]}\n${at}` : lines[0] || String(error);
+}
+
 function rateLimitFromApi(api) {
   try {
     const limit = api?.rateLimits?.find?.('POST', CONSOLE_RATE_PATH);
@@ -97,7 +112,6 @@ function createPendingRequest({id, raw, now, attempts}) {
   return {
     id,
     raw,
-    settled,
     serverErrors: [],
     lastServerError: null,
     response,
@@ -118,6 +132,9 @@ function createPendingRequest({id, raw, now, attempts}) {
     },
     get attempts() {
       return attempts();
+    },
+    get settled() {
+      return settled;
     },
   };
 }
@@ -159,10 +176,16 @@ async function openConsoleSession(options = {}, deps = {}) {
         current.resolve({raw: results});
         return;
       }
-      const parsed = parseResponse(result, current.id);
+      let parsed;
+      try {
+        parsed = parseResponse(result, current.id);
+      } catch (error) {
+        current.reject(new ConsoleProtocolError(`console 回包解析失败：${error?.message || error}；回包前 300 字符：${String(result).slice(0, 300)}`));
+        return;
+      }
       if (!parsed) continue;
       if (parsed.kind === 'e') {
-        current.reject(new ConsoleExpressionError(`表达式执行出错（tick ${parsed.tick}）：${parsed.error}`, {
+        current.reject(new ConsoleExpressionError(parsed.error, {
           tick: parsed.tick,
           attempts: current.attempts,
         }));
@@ -240,7 +263,7 @@ async function openConsoleSession(options = {}, deps = {}) {
         pending = null;
         return formatSuccess(response, shard, attempts);
       } catch (error) {
-        if (error instanceof ConsoleExpressionError || error instanceof ConsoleRejectedError || error instanceof ConsoleRateLimitError) {
+        if (error instanceof ConsoleExpressionError || error instanceof ConsoleProtocolError || error instanceof ConsoleRejectedError || error instanceof ConsoleRateLimitError) {
           pending = null;
           throw error;
         }
@@ -268,11 +291,16 @@ async function openConsoleSession(options = {}, deps = {}) {
 
       const delay = Math.min(8000 * (2 ** (attempts - 1)), 15000);
       log(`console 第 ${attempts} 次未收到回包，${Math.round(delay / 1000)}s 后按同一请求 ID 重试…`);
-      await sleep(delay);
-      if (current.settled) {
-        const response = await current.response;
+      try {
+        await Promise.race([sleep(delay), current.response]);
+        if (current.settled) {
+          const response = await current.response;
+          pending = null;
+          return formatSuccess(response, shard, attempts);
+        }
+      } catch (error) {
         pending = null;
-        return formatSuccess(response, shard, attempts);
+        throw error;
       }
     }
   }
@@ -324,7 +352,7 @@ async function runConsoleRepeat(session, expression, options = {}, deps = {}) {
     try {
       const result = await session.run(expression, {timeoutMs, retries, raw});
       stats.successful += 1;
-      emit({frame, tick: result.tick, value: result.value});
+      emit({frame, tick: result.tick, value: raw ? result.value : unwrapValue(result.value)});
     } catch (error) {
       stats.failed += 1;
       emit({frame, error: error.message, kind: error.kind || 'unknown'});
@@ -358,6 +386,7 @@ async function runConsole(options, expression, opts = {}) {
 module.exports = {
   ConsoleError,
   ConsoleExpressionError,
+  ConsoleProtocolError,
   ConsoleRateLimitError,
   ConsoleRejectedError,
   ConsoleTimeoutError,

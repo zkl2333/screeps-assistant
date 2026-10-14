@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   ConsoleExpressionError,
   ConsoleRateLimitError,
+  ConsoleProtocolError,
   ConsoleRejectedError,
   ConsoleTimeoutError,
   openConsoleSession,
@@ -13,7 +14,8 @@ const {wrapExpression} = require('../src/api/console-protocol');
 
 const nextTick = () => new Promise(resolve => setImmediate(resolve));
 
-function createHarness({send, shard = 'shard2'} = {}) {
+function createHarness(config = {}) {
+  const {send, shard = 'shard2'} = config;
   const calls = {connect: 0, subscribe: 0, unsubscribe: 0, disconnect: 0};
   const sent = [];
   const timers = [];
@@ -34,7 +36,7 @@ function createHarness({send, shard = 'shard2'} = {}) {
       sent.push({expression, targetShard});
       return send(sent.length, expression, targetShard);
     },
-    sleep: async () => {},
+    sleep: config.sleep || (async () => {}),
     now: () => 1760000000000,
     log: message => logs.push(message),
     setTimeout: fn => {
@@ -80,12 +82,15 @@ async function openHarness(config) {
   assert.deepEqual(first.calls, {connect: 1, subscribe: 1, unsubscribe: 1, disconnect: 1});
   assert.equal(first.sent[0].expression, first.sent[1].expression);
 
-  const late = await openHarness({send: () => ({ok: 1})});
+  const neverSleep = () => new Promise(() => {});
+  const late = await openHarness({send: () => ({ok: 1}), sleep: neverSleep});
   const lateRun = late.session.run('42', {timeoutMs: 20, retries: 1});
   await nextTick();
   late.timers.splice(0).forEach(timer => timer.fn());
+  await nextTick();
   late.emit(responseEvent(late.sent[0].expression, 7));
-  assert.deepEqual(await lateRun, {shard: 'shard2', id: requestId(late.sent[0].expression), tick: 123, attempts: 2, kind: 'j', value: 7});
+  assert.deepEqual(await lateRun, {shard: 'shard2', id: requestId(late.sent[0].expression), tick: 123, attempts: 1, kind: 'j', value: 7});
+  assert.equal(late.sent.length, 1);
   await late.session.close();
 
   const rejected = await openHarness({send: () => ({error: 'expression size is too large'})});
@@ -165,6 +170,37 @@ async function openHarness(config) {
   assert.equal(expressionError.sent.length, 1);
   await expressionError.session.close();
 
+  const lateError = await openHarness({send: () => ({ok: 1}), sleep: neverSleep});
+  const lateErrorRun = lateError.session.run('throw new Error("late")', {timeoutMs: 20, retries: 1});
+  await nextTick();
+  lateError.timers.splice(0).forEach(timer => timer.fn());
+  await nextTick();
+  lateError.emit(responseEvent(lateError.sent[0].expression, 'Error: late\n    at user.js:1:1\n    at runtime', {kind: 'e'}));
+  await assert.rejects(() => lateErrorRun, error => {
+    assert.ok(error instanceof ConsoleExpressionError);
+    assert.equal(error.kind, 'expression');
+    assert.equal(error.message, 'Error: late\n    at user.js:1:1');
+    assert.equal(error.fullError, 'Error: late\n    at user.js:1:1\n    at runtime');
+    return true;
+  });
+  assert.equal(lateError.sent.length, 1);
+  await lateError.session.close();
+
+  const protocol = await openHarness({send: () => ({ok: 1})});
+  const protocolRun = protocol.session.run('JSON.parse("x")', {timeoutMs: 20});
+  await nextTick();
+  const protocolId = requestId(protocol.sent[0].expression);
+  protocol.emit({shard: 'shard2', messages: {results: [`@@sa:${protocolId}:123:j:{坏JSON`]}});
+  await assert.rejects(() => protocolRun, error => {
+    assert.ok(error instanceof ConsoleProtocolError);
+    assert.equal(error.kind, 'protocol');
+    assert.match(error.message, /console 回包解析失败/);
+    assert.match(error.message, /@@sa:\w{8}:123:j:\{坏JSON/);
+    return true;
+  });
+  assert.equal(protocol.sent.length, 1);
+  await protocol.session.close();
+
   const raw = await openHarness({send: () => ({ok: 1})});
   const rawRun = raw.session.run('42', {timeoutMs: 20, raw: true});
   await nextTick();
@@ -189,6 +225,16 @@ async function openHarness(config) {
   });
   assert.deepEqual(repeatStats, {processed: 2, successful: 2, failed: 0, total: 2, interrupted: false});
   assert.deepEqual(repeatWaits, []);
+
+  const unwrappedFrames = [];
+  await runConsoleRepeat({
+    run: async () => ({tick: 1, value: JSON.stringify({x: 1})}),
+  }, 'JSON.stringify({x: 1})', {intervalMs: 0, times: 1, timeoutMs: 20, retries: 0}, {
+    now: () => 0,
+    sleep: async () => {},
+    emit: value => unwrappedFrames.push(value),
+  });
+  assert.deepEqual(unwrappedFrames, [{frame: 1, tick: 1, value: {x: 1}}]);
 
   const repeatOptions = [];
   await runConsoleRepeat({

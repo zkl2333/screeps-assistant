@@ -120,8 +120,8 @@ async function runCliConsole(args, expression) {
       interrupted = true;
       console.error('收到 Ctrl+C：等待当前 console 帧结束后停止…');
     };
-    process.once('SIGINT', onInterrupt);
     const session = await openConsoleSession(opts);
+    process.once('SIGINT', onInterrupt);
     let stats;
     let fatal;
     try {
