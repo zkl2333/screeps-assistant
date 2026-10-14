@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {TARGETS, gclProgress, objectSummary, resolveServerConfig, resolveTarget} = require('../src/api/client');
 
-assert.deepEqual(Object.keys(TARGETS), ['main', 'season']);
+assert.deepEqual(Object.keys(TARGETS), ['main', 'season', 'pserver']);
 assert.equal(resolveTarget({target: 'main'}).shard, 'shard2');
 assert.equal(resolveTarget({target: 'season'}).shard, 'shardSeason');
 assert.equal(resolveTarget({target: 'main', shard: 'shardX'}).shard, 'shardX');
