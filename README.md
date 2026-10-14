@@ -93,14 +93,19 @@ npm run query -- rooms --target season
 
 表达式来源三选一：位置参数（按空格拼回）、`--expr <表达式>`、`--file <路径>`；`--file -` 从 stdin 读取。文件按 UTF-8 处理并去 BOM/首尾空白。最推荐文件和 stdin，可完整保留箭头函数、管道符、正则和多行代码。
 
-默认模式会包装表达式并生成 8 位请求 ID：游戏内先执行用户代码，再把 `@@sa:<id>:<tick>:<kind>:<payload>` 写入 results；工具只认本次 ID，忽略 bot 日志和其他回包。成功值会尽量 JSON 化；JSON 序列化失败时用字符串表示；用户抛错返回错误栈。若结果字符串本身是 JSON 文本，CLI 会自动解包，因此 `JSON.stringify(...)` 的旧习惯仍可用。
+默认模式会包装表达式并生成 8 位请求 ID：游戏内先执行用户代码，再把 `@@sa:<id>:<tick>:<kind>:<payload>` 写入 results；工具只认本次 ID，忽略 bot 日志和其他回包。成功值会尽量 JSON 化；JSON 序列化失败时用字符串表示；用户抛错返回错误栈（CLI 默认只显示错误首行和第一条 `at`，完整文本保留在错误对象上）。若结果字符串本身是 JSON 文本，CLI 会自动解包，因此 `JSON.stringify(...)` 的旧习惯仍可用。
 
 服务器约在 1000 字节拒绝超长表达式；包装层最多占 320 字符，用户代码通常保留约 680 UTF-8 字节。CLI 会在联网前校验长度，并提示缩短/拆分、改用单引号，或必要时用 `--raw`。包装层会用 `global.__sa` 按 ID 缓存结果 100 tick；同一 ID 重发只返回缓存，不重复执行用户代码。
 
 ```bash
 # Windows / Git Bash 推荐入口
 node bin/screeps-assistant.js console --file probe.js --target main --shard shard2
-Get-Content probe.js | node bin/screeps-assistant.js console --file - --target season
+node bin/screeps-assistant.js console --file - --target season < probe.js
+
+# heredoc 定界符加单引号，内容不经 shell 展开
+node bin/screeps-assistant.js console --file - --target main --shard shard2 <<'EOF'
+Object.values(Game.creeps).filter(c => c.memory.role === 'scout').map(c => c.name)
+EOF
 
 # 单次执行；默认等待 15s，最多发送 3 次（初次 + 2 次重试）
 node bin/screeps-assistant.js console --expr "Game.time" --target main --timeout 15000 --retry 2
@@ -118,7 +123,8 @@ node bin/screeps-assistant.js console --file probe.js --target main --raw --retr
 - `--retry 0`：只发送一次。默认包装模式 `--retry` 为 2，重试前等待 8s、15s；写入类表达式建议显式设为 0，避免两次发送之间遇到 global 重置时重复执行。
 - `rejected`：服务器拒绝 POST，例如表达式过长；不会重试。
 - `rate-limit`：console 端点额度受限；不会重试，并显示重置时间。
-- `expression`：用户表达式执行抛错；返回 tick 和错误文本，不会重试。
+- `expression`：用户表达式执行抛错；返回 tick，stderr 默认只显示错误首行和第一条 `at`，完整文本保留在错误对象上，不会重试。
+- `protocol`：本次 ID 的回包格式或 JSON 解析失败；不会重试。
 - `timeout`：等待期间未收到本次 ID 回包。可能是该 tick 主循环超 CPU 导致服务端丢命令，也可能已执行但回包丢失；错误会说明发送次数和期间的服务端报错。
 - `--repeat` 至少 2 秒；`--times` 为 1～60，给出 `--repeat` 时默认 10。`timeout`/`expression` 记为失败帧后继续，`rejected`/`rate-limit` 立即停止并以非零码退出。stdout 是 JSON Lines，stderr 输出重试进度、Ctrl+C 状态和额度汇总。
 
@@ -127,9 +133,11 @@ node bin/screeps-assistant.js console --file probe.js --target main --raw --retr
 `--compact` 将 JSON 压缩为单行；默认仍为 2 空格缩进。`--filter` 支持 `路径=值`、`路径!=值` 和点号路径，多条件用逗号分隔且为“且”。`--fields` 对数组元素或对象条目保留指定路径，输出键名保留路径原文。
 
 ```bash
-node bin/screeps-assistant.js memory creeps --target main --shard shard2 --filter memory.role=harvester --fields name,memory.role,memory.room
+node bin/screeps-assistant.js memory creeps --target season --filter role=scout --fields role,origin --compact
 node bin/screeps-assistant.js rooms --target main --shard shard2 --compact
 ```
+
+`memory creeps` 返回的是「creep 名 → 该 creep 的 memory」对象集合，对象过滤会保留原键，所以 creep 名在键上。
 
 也可以安装为本地命令：
 
