@@ -72,6 +72,15 @@ function pickFields(value, fields) {
   return result;
 }
 
+function consoleEnvelope(result, value) {
+  const envelope = {shard: result.shard, id: result.id, tick: result.tick, attempts: result.attempts, value};
+  if (value === undefined) {
+    envelope.value = null;
+    envelope.valueKind = 'undefined';
+  }
+  return envelope;
+}
+
 function applyOutputOptions(value, args = {}) {
   let result = value;
   if (args.filter !== undefined) {
@@ -95,4 +104,4 @@ function printResult(value, args = {}, io = {}) {
   write('\n');
 }
 
-module.exports = {applyOutputOptions, isObjectCollection, parseConditions, printResult, readPath};
+module.exports = {applyOutputOptions, consoleEnvelope, isObjectCollection, parseConditions, printResult, readPath};

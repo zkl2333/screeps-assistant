@@ -1,8 +1,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const {commandArgs, expressionSourceNames, parseArgs, readConsoleExpression} = require('../src/cli/args');
-const {applyOutputOptions, printResult} = require('../src/cli/output');
+const {commandArgs, decodeStdinChunks, expressionSourceNames, parseArgs, readConsoleExpression} = require('../src/cli/args');
+const {applyOutputOptions, consoleEnvelope, printResult} = require('../src/cli/output');
 
 (async () => {
 
@@ -23,6 +23,7 @@ assert.equal(await readConsoleExpression({_: ['Game.time']}), 'Game.time');
 assert.equal(await readConsoleExpression({expr: ' Game.time '}), 'Game.time');
 assert.equal(await readConsoleExpression({file: 'probe.js'}, {readFile: async () => '\uFEFF Game.time \n'}), 'Game.time');
 assert.equal(await readConsoleExpression({file: '-'}, {readStdin: async () => 'Game.cpu\n'}), 'Game.cpu');
+assert.equal(decodeStdinChunks([Buffer.from([0xe4]), Buffer.from([0xb8, 0xad])]), '中');
 await assert.rejects(() => readConsoleExpression({_: ['a'], expr: 'b'}), /来源只能给一种/);
 await assert.rejects(() => readConsoleExpression({file: 'missing.js'}, {readFile: async () => {throw Object.assign(new Error('missing'), {code: 'ENOENT'});}}), /表达式文件不存在：missing\.js/);
 
@@ -50,6 +51,13 @@ assert.equal(compact.join(''), '{"a":1}\n');
 const undefinedOutput = [];
 printResult(undefined, {}, {write: text => undefinedOutput.push(text)});
 assert.equal(undefinedOutput.join(''), 'undefined\n');
+assert.deepEqual(consoleEnvelope({shard: 'shard2', id: 'abcd1234', tick: 123, attempts: 1}, undefined), {
+  shard: 'shard2', id: 'abcd1234', tick: 123, attempts: 1, value: null, valueKind: 'undefined',
+});
+assert.deepEqual(consoleEnvelope({shard: 'shard2', id: 'abcd1234', tick: 123, attempts: 1}, 42), {
+  shard: 'shard2', id: 'abcd1234', tick: 123, attempts: 1, value: 42,
+});
+
 const pretty = [];
 printResult({a: 1}, {}, {write: text => pretty.push(text)});
 assert.match(pretty.join(''), /\{\n {2}"a": 1\n\}/);

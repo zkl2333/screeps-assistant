@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const {Buffer} = require('node:buffer');
 
 const COMMANDS = ['summary', 'account', 'rooms', 'room', 'memory', 'segment', 'console', 'code', 'market', 'messages', 'history', 'shards', 'world', 'map', 'help'];
 const BOOLEAN_FLAGS = new Set(['all', 'ascii', 'no-cache', 'summary-only', 'compact', 'raw', 'envelope', 'help']);
@@ -65,10 +66,15 @@ function expressionSourceNames(args) {
   return sources;
 }
 
+/** 最后统一解码，避免多字节 UTF-8 字符被 Buffer 边界拆坏。 */
+function decodeStdinChunks(chunks) {
+  return Buffer.concat(chunks.map(chunk => Buffer.from(chunk, 'utf8'))).toString('utf8');
+}
+
 async function readStdin() {
-  let text = '';
-  for await (const chunk of process.stdin) text += chunk;
-  return text;
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(chunk);
+  return decodeStdinChunks(chunks);
 }
 
 /** 读取 console 表达式；三种来源互斥，文件去 BOM 和首尾空白。 */
@@ -139,6 +145,7 @@ EOF
 
 module.exports = {
   BOOLEAN_FLAGS,
+  decodeStdinChunks,
   COMMANDS,
   KNOWN_FLAGS,
   VALUE_FLAGS,

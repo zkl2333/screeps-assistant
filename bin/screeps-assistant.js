@@ -13,7 +13,7 @@ const {
   wrapExpression,
 } = require('../src/api/console-protocol');
 const {commandArgs, helpText, parseInteger, readConsoleExpression} = require('../src/cli/args');
-const {printResult} = require('../src/cli/output');
+const {consoleEnvelope, printResult} = require('../src/cli/output');
 const {readWorld, scanRooms} = require('../src/map/query');
 const {terrainAscii} = require('../src/map/analysis');
 
@@ -68,7 +68,7 @@ function printConsoleResult(result, args) {
   }
   const value = unwrapValue(result.value);
   if (args.envelope) {
-    printResult({shard: result.shard, id: result.id, tick: result.tick, attempts: result.attempts, value}, args);
+    printResult(consoleEnvelope(result, value), args);
     return;
   }
   if (typeof value === 'string') {
