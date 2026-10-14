@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const {EventEmitter} = require('node:events');
 const {
   ConsoleClosedError,
   ConsoleExpressionError,
@@ -90,6 +91,19 @@ async function openHarness(config) {
   assert.deepEqual(first.calls, {connect: 1, subscribe: 1, unsubscribe: 1, disconnect: 1});
   assert.equal(first.sent[0].expression, first.sent[1].expression);
   assert.equal(first.timers.length, 0);
+
+  // screeps-api 自带的 console.error 监听要被换成静默监听：socket 出错不再整段打印，也不会因无人监听而抛出。
+  const emitterSocket = Object.assign(new EventEmitter(), {
+    async connect() {},
+    async subscribe() {},
+    async unsubscribe() {},
+    disconnect() {},
+  });
+  emitterSocket.on('error', console.error);
+  const quiet = await openConsoleSession({}, {context: async () => ({api: {socket: emitterSocket}, shard: 'shard2'}), log: () => {}});
+  assert.equal(emitterSocket.listeners('error').includes(console.error), false);
+  assert.doesNotThrow(() => emitterSocket.emit('error', new Error('socket reset')));
+  await quiet.close();
 
   const late = await openHarness({send: () => ({ok: 1})});
   const lateRun = late.session.run('42', {timeoutMs: 20, retries: 1});

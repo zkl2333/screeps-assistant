@@ -155,6 +155,9 @@ async function openConsoleSession(options = {}, deps = {}) {
   const clearTimer = deps.clearTimeout || clearTimeout;
   const {api, shard} = await resolvedContext(options);
 
+  // screeps-api 默认把 socket error 用 console.error 整段打印；换成静默监听，错误仍经 connect/请求路径上报。
+  api.socket.on?.('error', () => {});
+  api.socket.off?.('error', console.error);
   await api.socket.connect();
   let pending = null;
   let closed = false;
