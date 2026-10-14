@@ -71,6 +71,16 @@
 - `ownTowers` / `ownSpawns` / `ownLabs` / `ownFactories`：仅当前账号拥有的数量。
 - `storageEnergy` / `terminalEnergy` / `spawning` / `constructionSites`：仍只统计己方。
 
+## Console 通道
+
+- **状态：** `verified`
+- **验证日期：** 2026-10
+- **来源：** 开源 driver/engine 源码核对与线上实测；客户端使用 `api.userConsole(expression, shard)` 和 socket `console` 订阅。
+- `POST /api/user/console` 只提交命令，不返回执行结果。表达式超长等服务端拒绝可能仍是 HTTP 200，body 为 `{error: "..."}`；约 1000 字节开始受限，不能只靠异常或 HTTP 状态判断。
+- 开源 driver 在 tick 开始取运行数据时就会把 console 队列清空。若该 tick 用户主循环先达到 CPU 上限，后续 console 命令不会执行，socket 可能只收到一条不带请求标识的顶层 `error`（如 CPU time limit reached）。
+- socket `console` 事件的 `event.data` 形如 `{messages: {log: [...], results: [...]}, shard}` 或 `{error, shard}`。driver 用 `"" + eval(code)` 把最后一条语句的值转成字符串放入 `results`；`log` 可能包含 bot 每 tick 输出，不能作为本次回包依据。POST 后收到结果通常需要 2～5 秒。
+- 端点额度：`POST /api/user/console` 360 次/小时；`GET /api/user/memory` 1440 次/天；`GET /api/user/memory-segment` 360 次/小时。响应头会更新 `api.rateLimits`，可用 `api.rateLimits.find('POST', '/api/user/console')` 读取 `{limit, remaining, reset, toReset}`；端点 429 默认不重试。
+
 ## 仍需按次确认
 
 - Respawn Area 是否存在可直接查询“所有者”的专用端点。
