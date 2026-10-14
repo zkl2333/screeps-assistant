@@ -95,6 +95,8 @@ npm run query -- rooms --target season
 
 默认模式会包装表达式并生成 8 位请求 ID：游戏内先执行用户代码，再把 `@@sa:<id>:<tick>:<kind>:<payload>` 写入 results；工具只认本次 ID，忽略 bot 日志和其他回包。成功值会尽量 JSON 化；JSON 序列化失败时用字符串表示；用户抛错返回错误栈（CLI 默认只显示错误首行和第一条 `at`，完整文本保留在错误对象上）。若结果字符串本身是 JSON 文本，CLI 会自动解包，因此 `JSON.stringify(...)` 的旧习惯仍可用。
 
+有一个包装层作用域例外：用户代码能看到包装函数参数 `c`（表达式源码字符串），因此不要依赖名为 `c` 的全局变量；局部声明或箭头函数参数 `c` 不受影响。
+
 服务器约在 1000 字节拒绝超长表达式；包装层最多占 320 字符，用户代码通常保留约 680 UTF-8 字节。CLI 会在联网前校验长度，并提示缩短/拆分、改用单引号，或必要时用 `--raw`。包装层会用 `global.__sa` 按 ID 缓存结果 100 tick；同一 ID 重发只返回缓存，不重复执行用户代码。
 
 ```bash
@@ -110,7 +112,7 @@ EOF
 # 单次执行；默认等待 15s，最多发送 3 次（初次 + 2 次重试）
 node bin/screeps-assistant.js console --expr "Game.time" --target main --timeout 15000 --retry 2
 
-# 输出协议信封，便于核对 ID、tick 和尝试次数
+# 输出协议信封，便于核对 ID、tick 和尝试次数；undefined 显示为 value:null + valueKind:"undefined"
 node bin/screeps-assistant.js console --file probe.js --target main --envelope
 
 # 连拍：每 10 秒一帧，默认 10 帧；每帧新 ID 且默认不重试
@@ -126,7 +128,7 @@ node bin/screeps-assistant.js console --file probe.js --target main --raw --retr
 - `expression`：用户表达式执行抛错；返回 tick，stderr 默认只显示错误首行和第一条 `at`，完整文本保留在错误对象上，不会重试。
 - `protocol`：本次 ID 的回包格式或 JSON 解析失败；不会重试。
 - `timeout`：等待期间未收到本次 ID 回包。可能是该 tick 主循环超 CPU 导致服务端丢命令，也可能已执行但回包丢失；错误会说明发送次数和期间的服务端报错。
-- `--repeat` 至少 2 秒；`--times` 为 1～60，给出 `--repeat` 时默认 10。`timeout`/`expression` 记为失败帧后继续，`rejected`/`rate-limit` 立即停止并以非零码退出。stdout 是 JSON Lines，stderr 输出重试进度、Ctrl+C 状态和额度汇总。
+- `--repeat` 至少 2 秒；`--times` 为 1～60，给出 `--repeat` 时默认 10。`timeout`/`expression` 记为失败帧后继续，`rejected`/`rate-limit` 立即停止并以非零码退出。stdout 是 JSON Lines，stderr 输出重试进度、Ctrl+C 状态和额度汇总；Ctrl+C 在任一帧开始前到达时不会执行该帧。
 
 ### 输出选项
 
