@@ -248,6 +248,7 @@ async function main() {
 }
 
 main().catch(error => {
-  console.error(`查询失败：${error.message}${httpDetail(error)}`);
+  const label = error?.kind === 'expression' && error.tick !== undefined ? `表达式执行出错（tick ${error.tick}）：` : '';
+  console.error(`查询失败：${label}${error.message}${httpDetail(error)}`);
   process.exitCode = 1;
 });
