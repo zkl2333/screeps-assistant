@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 
-const {context, gclProgress, objectSummary, readSummary, resolveTarget} = require('../src/api/client');
+const {context, gclProgress, resolveTarget} = require('../src/api/client');
+const queries = require('../src/api/queries');
 const {
   consoleSummary,
   openConsoleSession,
@@ -19,16 +20,6 @@ const {terrainAscii} = require('../src/map/analysis');
 
 function options(args) {
   return {target: args.target || 'main', shard: args.shard, account: args.account};
-}
-
-// Memory 接口返回 {ok, data} 信封；screeps-api 已自动解 gz:，data 只剩 JSON 字符串或已解析对象。
-function decodeMemoryValue(value) {
-  if (typeof value !== 'string') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
 }
 
 function resetTimeFromHeaders(headers) {
@@ -164,34 +155,23 @@ async function main() {
     return;
   }
   const opts = options(args);
-  if (args.command === 'summary') return printResult(await readSummary(opts), args);
+  if (args.command === 'summary') return printResult(await queries.readSummary(opts), args);
   if (args.command === 'account') {
     const {account} = await context(opts);
     // 附上 GCL 阶梯解析，原始字段保持不变。
     return printResult({...account, gclProgress: gclProgress(account.gcl)}, args);
   }
-  if (args.command === 'rooms') {
-    const {api, account, shard} = await context(opts);
-    const rooms = await api.userRooms(account._id, shard);
-    return printResult({target: opts.target, shard, rooms: rooms?.shards?.[shard] || []}, args);
-  }
-  if (args.command === 'room') {
-    if (!args.room) throw new Error('room 命令需要 --room 房间名');
-    const {api, account, shard} = await context(opts);
-    const data = await api.gameRoomObjects(args.room, shard);
-    return printResult({target: opts.target, shard, room: args.room, summary: objectSummary(data.objects || [], account._id)}, args);
-  }
+  if (args.command === 'rooms') return printResult(await queries.listRooms(opts), args);
+  if (args.command === 'room') return printResult(await queries.getRoom({...opts, room: args.room}), args);
   if (args.command === 'memory') {
-    // 路径省略时查 Memory 根。
     const memoryPath = args.path !== undefined ? args.path : (args._[0] || '');
     const {api, shard} = await context(opts);
     const res = await api.userMemoryGet(memoryPath, shard);
-    return printResult(decodeMemoryValue(res?.data), args);
+    return printResult(queries.decodeMemoryValue(res?.data), args);
   }
   if (args.command === 'segment') {
     if (args.id === undefined) throw new Error('segment 命令需要 --id，多个 Segment 用逗号分隔');
-    const {api, shard} = await context(opts);
-    return printResult({target: opts.target, shard, segments: await api.userMemorySegmentGet(args.id, shard)}, args);
+    return printResult(await queries.getSegment({...opts, id: args.id}), args);
   }
   if (args.command === 'console') {
     const expression = await readConsoleExpression(args);
@@ -215,10 +195,7 @@ async function main() {
     const {api, shard} = await context(opts);
     return printResult(await api.history(args.room, args.stat, args.interval || 8, args.resource, shard), args);
   }
-  if (args.command === 'shards') {
-    const {api} = await context(opts);
-    return printResult(await api.gameShardsInfo(), args);
-  }
+  if (args.command === 'shards') return printResult(await queries.listShards(opts), args);
   if (args.command === 'world') return printResult(await readWorld(opts), args);
   if (args.command === 'map') {
     const scan = await scanRooms({

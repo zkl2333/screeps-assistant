@@ -4,19 +4,23 @@
   "description": "Screeps 外部读取、实时监控与代码备份工具",
   "main": "bin/screeps-assistant.js",
   "bin": {
-    "screeps-assistant": "bin/screeps-assistant.js"
+    "screeps-assistant": "bin/screeps-assistant.js",
+    "screeps-mcp": "src/mcp/server.mjs"
   },
   "scripts": {
     "query": "node bin/screeps-assistant.js",
+    "mcp": "node src/mcp/server.mjs",
     "pull": "node tools/backup/pull-code.js",
-    "test": "node tests/client.test.js && node tests/map.test.js && node tests/console-protocol.test.js && node tests/console-session.test.js && node tests/cli.test.js"
+    "test": "node tests/client.test.js && node tests/map.test.js && node tests/console-protocol.test.js && node tests/console-session.test.js && node tests/cli.test.js && node tests/queries.test.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@modelcontextprotocol/server": "^2.4.0",
     "@screeps/common": "^2.16.1",
-    "screeps-api": "^2.1.0"
+    "screeps-api": "^2.1.0",
+    "zod": "^4.6.7"
   }
 }
