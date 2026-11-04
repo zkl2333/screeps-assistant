@@ -2,6 +2,28 @@
 
 Screeps 外部读取、游戏内表达式执行、实时连接、代码备份和数据分析工具。正式服与赛季服使用同一套命令，但通过不同目标配置隔离。
 
+同时提供本机 stdio MCP：Finch、Codex、zcode 和 Claude 可直接调用结构化工具；Grok Bot 使用同一 CLI，不需要远程 MCP 网关。
+
+## MCP
+
+先在本仓库执行 `npm ci`，然后将 MCP 客户端的 stdio 命令配置为：
+
+```bash
+node /path/to/screeps-assistant/src/mcp/server.mjs
+```
+
+进程必须在仓库目录启动，才能读取本地 `.screeps.yml`。MCP 工具直接调用 API，不经过 shell，也不启动 CLI 子进程。第一版工具包括账号、Shard、房间、Memory、Segment 和通用 Console；Console 传入的是完整游戏内 JavaScript，默认不重试，超时表示执行结果未知。
+
+Grok Bot 在它的云端电脑中使用本 CLI。简单表达式可以用 `--expr`；复杂表达式使用 stdin：
+
+```bash
+node bin/screeps-assistant.js console --file - --target main --shard shardX <<'EOF'
+Object.values(Game.creeps).filter(c => c.room.name === 'E49N32').map(c => c.name)
+EOF
+```
+
+在 Grok Bot 中完成一次 CLI 工作流后，可让它保存为私有 Skill；不要假设复制一个通用 `SKILL.md` 文件就会被 Grok 自动发现。
+
 > **Windows 警告：不要经 `npm run query --` 传 console 表达式。** cmd.exe 会把 `>`（含 `=>`）、`|`、`&`、`^`、`%` 当特殊字符，导致表达式截断或生成垃圾文件。请直接执行 `node bin/screeps-assistant.js console --file probe.js`，或用 stdin：`--file -`。Git Bash 会把以 `/` 开头的参数改写成路径，表达式同样建议来自文件或 stdin。
 
 ## 安装
