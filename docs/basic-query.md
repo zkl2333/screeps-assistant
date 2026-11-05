@@ -46,7 +46,7 @@ node bin/screeps-assistant.js room E43N28 --target main --shard shard2
 node bin/screeps-assistant.js room E43N28 --objects --filter type=tower --fields _id,store.energy --target main --shard shard2
 
 # 官方房间统计
-node bin/screeps-assistant.js history E43N28 --interval 180 --target main --shard shard2
+node bin/screeps-assistant.js overview E43N28 --interval 180 --target main --shard shard2
 
 # Memory：路径可用位置参数或 --path；省略即查根
 node bin/screeps-assistant.js memory rooms.E43N28 --target main --shard shard2

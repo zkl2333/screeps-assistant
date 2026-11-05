@@ -93,10 +93,10 @@ node bin/screeps-assistant.js room E43N28 --target main --shard shard2
 node bin/screeps-assistant.js room E43N28 --objects --filter type=creep --fields name,x,y,hits,fatigue,username --target main --shard shard2
 
 # 官方房间统计
-node bin/screeps-assistant.js history E43N28 --target main --shard shard2
-node bin/screeps-assistant.js history E43N28 --interval 180 --stat creepsLost --target main --shard shard2
-node bin/screeps-assistant.js history E43N28 --pick stats --fields total --compact --target main --shard shard2
-node bin/screeps-assistant.js history E43N28 --tick 77950310 --target main --shard shard2
+node bin/screeps-assistant.js overview E43N28 --target main --shard shard2
+node bin/screeps-assistant.js overview E43N28 --interval 180 --stat creepsLost --target main --shard shard2
+node bin/screeps-assistant.js overview E43N28 --pick stats --fields total --compact --target main --shard shard2
+node bin/screeps-assistant.js overview E43N28 --tick 77950310 --target main --shard shard2
 
 # Memory（路径可用位置参数或 --path；省略即查整个 Memory）与 Segment
 node bin/screeps-assistant.js memory rooms.E43N28 --target main --shard shard2
@@ -121,7 +121,7 @@ node bin/screeps-assistant.js map --target season --around E5S5 --radius 3 --sum
 
 `room --objects` 输出官方房间对象接口的原样数组（每个建筑的 `store`、creep 的 `hits` / `fatigue` / `ageTime` / `actionLog`、墓碑、废墟等），带 `user` 的对象补上 `username`，便于 `--filter username=Invader`。没视野的房间也能读。
 
-`history` 读官方房间统计（room-overview）：
+`overview` 读官方房间统计（room-overview）：
 
 - `--interval` 是每格分钟数：`8`（默认，最近约 64 分钟）、`180`（约 24 小时）、`1440`（按天，约一周）；
 - 每个统计项给出 `total`（序列求和）和 `series`；`end` 是这一格结束的本地时间（带时区偏移），最后一格通常还没结束，标 `inProgress: true`；
@@ -186,7 +186,7 @@ node bin/screeps-assistant.js console --file probe.js --target main --raw --retr
 node bin/screeps-assistant.js console --file my-probe --target main --shard shard2
 ```
 
-写探针前先看内置命令能不能直接回答：房间现场用 `room --objects`，Memory 用 `memory` 加 `--filter` / `--fields`，房间统计用 `history`。只有要读 bot 的运行时状态（`global` 上的对象、bot 自己的方法）时才需要探针。详见 [`probes/README.md`](probes/README.md)。
+写探针前先看内置命令能不能直接回答：房间现场用 `room --objects`，Memory 用 `memory` 加 `--filter` / `--fields`，房间统计用 `overview`。只有要读 bot 的运行时状态（`global` 上的对象、bot 自己的方法）时才需要探针。详见 [`probes/README.md`](probes/README.md)。
 
 ## 输出选项
 
@@ -194,7 +194,7 @@ node bin/screeps-assistant.js console --file my-probe --target main --shard shar
 
 ```bash
 node bin/screeps-assistant.js memory creeps --target season --filter role=scout --fields role,origin --compact
-node bin/screeps-assistant.js history E43N28 --target main --shard shard2 --pick stats --fields total
+node bin/screeps-assistant.js overview E43N28 --target main --shard shard2 --pick stats --fields total
 node bin/screeps-assistant.js room E43N28 --target main --shard shard2 --pick summary.hostileCreeps
 ```
 

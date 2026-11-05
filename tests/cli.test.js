@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const {commandArgs, decodeStdinChunks, expressionSourceNames, helpText, parseArgs, readConsoleExpression} = require('../src/cli/args');
+const {COMMANDS, commandArgs, decodeStdinChunks, expressionSourceNames, helpText, parseArgs, readConsoleExpression} = require('../src/cli/args');
 const {applyOutputOptions, consoleEnvelope, printResult} = require('../src/cli/output');
 
 (async () => {
@@ -50,11 +50,17 @@ await assert.rejects(
 
 assert.deepEqual(parseArgs(['room', 'E43N28', '--objects']), {_: ['E43N28'], objects: true, command: 'room'});
 
-// history 的 --tick 是带值参数；help 的 history 那一行要列出它。
-assert.deepEqual(parseArgs(['history', 'E43N28', '--tick', '77950310']), {_: ['E43N28'], tick: '77950310', command: 'history'});
-assert.deepEqual(parseArgs(['history', 'E43N28', '--tick=77950310']), {_: ['E43N28'], tick: '77950310', command: 'history'});
-assert.throws(() => parseArgs(['history', 'E43N28', '--tick']), /参数缺少值：--tick/);
-assert.match(helpText(), /history <房间>[^\n]*--tick/);
+// overview 的 --tick 是带值参数；help 的 overview 那一行要列出它。
+assert.deepEqual(parseArgs(['overview', 'E43N28', '--tick', '77950310']), {_: ['E43N28'], tick: '77950310', command: 'overview'});
+assert.deepEqual(parseArgs(['overview', 'E43N28', '--tick=77950310']), {_: ['E43N28'], tick: '77950310', command: 'overview'});
+assert.throws(() => parseArgs(['overview', 'E43N28', '--tick']), /参数缺少值：--tick/);
+assert.match(helpText(), /overview <房间>[^\n]*--tick/);
+
+// history 留给房间回放：命令名仍然合法（执行时才报错），但还没实现，帮助里不列。
+assert.ok(COMMANDS.includes('overview'));
+assert.ok(COMMANDS.includes('history'));
+assert.doesNotThrow(() => commandArgs(['history', 'E43N28']));
+assert.doesNotMatch(helpText(), /history <房间>/);
 
 const creeps = [
   {name: 'h1', memory: {role: 'harvester', room: 'E1N1'}},

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {Buffer} = require('node:buffer');
 
-const COMMANDS = ['summary', 'account', 'rooms', 'room', 'memory', 'segment', 'console', 'code', 'market', 'messages', 'history', 'shards', 'world', 'map', 'help'];
+const COMMANDS = ['summary', 'account', 'rooms', 'room', 'memory', 'segment', 'console', 'code', 'market', 'messages', 'overview', 'history', 'shards', 'world', 'map', 'help'];
 const BOOLEAN_FLAGS = new Set(['all', 'ascii', 'no-cache', 'summary-only', 'compact', 'raw', 'envelope', 'objects', 'help']);
 const VALUE_FLAGS = new Set([
   'target', 'shard', 'account', 'room', 'path', 'id', 'expr', 'file', 'timeout', 'branch',
@@ -142,7 +142,7 @@ function helpText() {
   account                  账号概况（含 GCL 阶梯）
   rooms                    当前分片的己方房间
   room <房间>              房间现场摘要；--objects 输出全部对象（不需要视野、不占 console 额度）
-  history <房间>           官方房间统计；--interval 8|180|1440（每格分钟数），--stat 只看一项，--tick 只看覆盖该 tick 的那一格
+  overview <房间>          官方房间统计；--interval 8|180|1440（每格分钟数），--stat 只看一项，--tick 只看覆盖该 tick 的那一格
   memory [路径]            按路径读 Memory；省略路径读整个 Memory
   segment --id <id,...>    读 Memory Segment
   console                  执行游戏内表达式（见下）
@@ -154,7 +154,7 @@ function helpText() {
 通用参数：
   --target <main|ptr|season|pserver，或 .screeps.yml 里的其他服务器>
   --shard <分片>   --account <账号>   --compact
-  --pick <路径>            先取结果的子路径，例如 history 的 --pick stats
+  --pick <路径>            先取结果的子路径，例如 overview 的 --pick stats
   --filter <路径=值,...>   --fields <路径,...>   作用于数组或对象集合（有 --pick 时作用于取出的部分）
 
 console 表达式三选一：位置参数、--expr、--file <路径或 probes/ 下的探针名>；--file - 读 stdin

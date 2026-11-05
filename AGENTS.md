@@ -41,7 +41,7 @@ npm ci
 node bin/screeps-assistant.js summary --target main --shard shard2
 node bin/screeps-assistant.js room E43N28 --target main --shard shard2              # 房间摘要
 node bin/screeps-assistant.js room E43N28 --objects --filter type=creep --fields name,x,y,hits,fatigue --target main --shard shard2  # 全部对象，不需要视野
-node bin/screeps-assistant.js history E43N28 --interval 180 --target main --shard shard2  # 官方房间统计
+node bin/screeps-assistant.js overview E43N28 --interval 180 --target main --shard shard2  # 官方房间统计
 node bin/screeps-assistant.js memory rooms.E43N28 --target main --shard shard2      # 路径用位置参数；省略路径即查根
 node bin/screeps-assistant.js segment --id 0 --target main --shard shard2
 node bin/screeps-assistant.js code --target ptr                                     # 核对 PTR 上的代码分支
@@ -165,7 +165,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
   - 排查、评估和 review 默认只执行只读操作；用户明确要求执行普通游戏操作时，可以根据已确认的目标和 bot API 构造并执行相应 Console 表达式
   - 重生、放弃房间等不可逆游戏操作，执行前必须明确告知影响
   - **bot 正式部署只能走 GitHub Actions，禁止直接 API 提交代码**
-- **探针：** 线上排查先用内置命令（`room --objects`、`memory` 加 `--filter` / `--fields`、`history`），读 bot 运行时状态才写 console 探针；探针放 `probes/`（不入库），不要放仓库根目录。
+- **探针：** 线上排查先用内置命令（`room --objects`、`memory` 加 `--filter` / `--fields`、`overview`），读 bot 运行时状态才写 console 探针；探针放 `probes/`（不入库），不要放仓库根目录。
 
 每次处理任务时，优先读取本目录及相关子目录的 `AGENTS.md`，再根据需要查询 Screeps API 和游戏状态。不要把本仓库当成 bot 设计仓库或旁路发布通道。
 
@@ -194,7 +194,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
    | `authMe` | `account` |
    | `userRooms` | `rooms` |
    | `gameRoomObjects` | `room <房间> --objects`（摘要用 `room <房间>`） |
-   | `gameRoomOverview` | `history <房间>` |
+   | `gameRoomOverview` | `overview <房间>` |
    | `userMemoryGet` | `memory <路径>` |
    | `userMemorySegmentGet` | `segment --id <id>` |
    | `userCodeGet` | `code` |
@@ -215,4 +215,4 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
 
 上游 CLI 也暴露写入接口。Agent 只能用它的只读方法；禁止经上游 CLI 调用代码提交、Memory/Segment 写入、`userConsole`、建筑/旗帜/Intent、重生/放弃房间、市场写入、消息发送/标记已读或装饰修改等副作用 API。游戏内表达式一律走本工具的 `console` 命令（带请求 ID 匹配和同 ID 去重），不要用上游的 `userConsole`。正式 bot 部署仍只能走 GitHub Actions。
 
-官方房间统计用 `history <房间>` 查询，字段含义见 [`docs/api/screeps-api.md`](./docs/api/screeps-api.md) 的「官方房间统计」。统计只能说明官方记录的区间数据，不能直接替代完整的房间实时 Energy 收支。
+官方房间统计用 `overview <房间>` 查询，字段含义见 [`docs/api/screeps-api.md`](./docs/api/screeps-api.md) 的「官方房间统计」。统计只能说明官方记录的区间数据，不能直接替代完整的房间实时 Energy 收支。

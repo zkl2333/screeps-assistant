@@ -93,16 +93,16 @@
 - **验证日期：** 2026-11-05（正式服 shard2，E43N28，三档 interval 各取一次）
 - **客户端方法：** `api.gameRoomOverview(room, interval, shard)`
 - **端点：** `GET /api/game/room-overview`
-- **命令：** `node bin/screeps-assistant.js history E43N28 --interval 8 --target main --shard shard2`
+- **命令：** `node bin/screeps-assistant.js overview E43N28 --interval 8 --target main --shard shard2`
 - `interval` 是每格分钟数，只有三档：`8` 返回 8 格（约 64 分钟），`180` 返回 8 格（约 24 小时），`1440` 实测返回 7 格（按天）。
-- 返回 `stats`（时间序列）、`totals`（区间总计）和 `statsMax`。`statsMax` 的键形如 `energy8`、`creepsProduced180`，同一 interval 下各能量项的值相同，不是本房间的区间最大值；`history` 不输出它。
-- 时间序列的 `endTime` 不是游戏 tick，也不是直接的 Unix 时间戳，而是以 `interval` 分钟为单位的 Unix 时间格号：`endTime × interval × 60000` 就是这一格结束时刻的 Unix 毫秒。相邻两格差 1；最后一格通常还没结束（结束时刻在当前时间之后），数值仍在累积。`history` 命令已换算成带时区的本地时间，并给进行中的格子标 `inProgress`。
-- tick 换算（估算）：统计只带墙钟时间，不带 tick。`history` 用 `api.gameTime(shard)`（`{ok, time}`，当前 tick）加 `api.gameShardsInfo()` 里当前分片的 `tick`（最近若干 tick 的平均时长，毫秒，带小数且每次读到都略有波动；2026-11-05 shard2 实测在 3800～3950 之间）估算：墙钟时刻 `ms` 对应的 tick = `gameTime - (读到 gameTime 时的 Date.now() - ms) / tick 时长`。一格覆盖 `[结束 - interval×60000, 结束)`，已结束格子的 `ticks` 上界取下一格下界减 1，进行中的格子上界取 `gameTime`。这只是估算，不是引擎记录的 tick：实际 tick 时长会波动，越久远误差越大，格子边界附近可能差一格，也要求本机时钟与服务器时间大致同步。读不到这两项时 `history` 不输出 `ticks`、`gameTime`、`tickMs`，统计照常输出。
-- `totals` 只列非零项，数值等于序列求和；`history` 的 `total` 按序列求和，零值项也有。
+- 返回 `stats`（时间序列）、`totals`（区间总计）和 `statsMax`。`statsMax` 的键形如 `energy8`、`creepsProduced180`，同一 interval 下各能量项的值相同，不是本房间的区间最大值；`overview` 不输出它。
+- 时间序列的 `endTime` 不是游戏 tick，也不是直接的 Unix 时间戳，而是以 `interval` 分钟为单位的 Unix 时间格号：`endTime × interval × 60000` 就是这一格结束时刻的 Unix 毫秒。相邻两格差 1；最后一格通常还没结束（结束时刻在当前时间之后），数值仍在累积。`overview` 命令已换算成带时区的本地时间，并给进行中的格子标 `inProgress`。
+- tick 换算（估算）：统计只带墙钟时间，不带 tick。`overview` 用 `api.gameTime(shard)`（`{ok, time}`，当前 tick）加 `api.gameShardsInfo()` 里当前分片的 `tick`（最近若干 tick 的平均时长，毫秒，带小数且每次读到都略有波动；2026-11-05 shard2 实测在 3800～3950 之间）估算：墙钟时刻 `ms` 对应的 tick = `gameTime - (读到 gameTime 时的 Date.now() - ms) / tick 时长`。一格覆盖 `[结束 - interval×60000, 结束)`，已结束格子的 `ticks` 上界取下一格下界减 1，进行中的格子上界取 `gameTime`。这只是估算，不是引擎记录的 tick：实际 tick 时长会波动，越久远误差越大，格子边界附近可能差一格，也要求本机时钟与服务器时间大致同步。读不到这两项时 `overview` 不输出 `ticks`、`gameTime`、`tickMs`，统计照常输出。
+- `totals` 只列非零项，数值等于序列求和；`overview` 的 `total` 按序列求和，零值项也有。
 - 官方房间统计包括：`energyHarvested`、`energyConstruction`、`energyCreeps`、`energyControl`、`creepsProduced`、`creepsLost`、`powerProcessed`。
 - `energyConstruction` 是 Creep 建造和维修消耗；`energyCreeps` 是 Spawn 和 Renew 消耗；`energyControl` 表示升级产生的 GCL 进度，不是 Energy 数量。
 - 赛季服的房间统计时有时无，没有数据时不能当作该房间没有活动。
-- 注意 `api.history(room, tick, shard)` 是另一个接口：房间回放（`/room-history/...`），按 100 tick 一块；不要和房间统计混用。
+- 注意 `api.history(room, tick, shard)` 是另一个接口：房间回放（`/room-history/...`），按 100 tick 一块；它由本工具的 `history` 命令提供，不要和房间统计（`overview`）混用。
 - 该工具只读，不向 Screeps 提交游戏操作；官方接口的读取发生在 Bot 外部，不占 Bot 的游戏 CPU。
 
 ## 上游 CLI
