@@ -21,7 +21,7 @@
 - TI 的 Planner、人口、交通、经济或物流实现细节；
 - 长期保存的房间状态快照或动态进度。
 
-查询命令直接使用上游 [`screeps-api` CLI](https://github.com/screepers/node-screeps-api)。本仓库不再维护重复的 HTTP CLI。Bot 设计、TI 架构和验收内容统一放在 `screeps-bot/handbook/`；`screeps-bot/docs/` 只存放 Compodoc 生成结果。
+查询以本仓库的 CLI（`node bin/screeps-assistant.js`）和 MCP 为主入口；本仓库没封装的只读端点，再用上游 [`screeps-api` CLI](https://github.com/screepers/node-screeps-api) 兜底，对照表见 [`../AGENTS.md`](../AGENTS.md) 的「入口优先级」。Bot 设计、TI 架构和验收内容统一放在 `screeps-bot/handbook/`；`screeps-bot/docs/` 只存放 Compodoc 生成结果。
 
 判断归属时使用一个问题：换成另一个 Bot 后，结论是否仍然成立？成立则放本仓库；依赖 TI 类型、目录、调用链或 Memory 结构则放 `screeps-bot/handbook/`。
 

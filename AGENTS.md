@@ -17,10 +17,13 @@
 ├── .screeps.yml          # 本地 API 配置（含 token，已 gitignore）
 ├── bin/
 │   └── screeps-assistant.js # 正式命令入口（查询只读 + console 透传）
-├── src/api/              # 目标配置、只读 API 与 console 执行
+├── src/api/              # 目标配置、只读 API、查询层与 console 执行
+├── src/cli/              # 参数解析与输出选项
+├── src/mcp/              # stdio MCP 入口
 ├── src/map/              # 跨环境地图分析（纯函数）与联网扫描
 ├── tools/backup/         # 线上代码只读备份
 ├── tools/live/           # WebSocket 与 CPU 采样
+├── probes/               # 一次性 console 探针（只有 README 入库）
 ├── tests/                # 本地测试与 fixture
 ├── docs/                 # API、使用说明、通用游戏知识和参考资料
 └── skills/               # Screeps 专用技能
@@ -28,21 +31,26 @@
 
 ## 常用命令
 
+入口统一用 `node bin/screeps-assistant.js`（`--help` 看全部命令）；MCP 客户端用 `src/mcp/server.mjs`。
+
 ```bash
 # 安装依赖
-npm install
+npm ci
 
-# 正式命令（查询只读 + console 透传）
-npm run query -- summary --target main --shard shard2
-npm run query -- room --target main --shard shard2 --room E42N24
-npm run query -- memory rooms.E42N24 --target main --shard shard2   # 路径用位置参数；省略路径即查根
-npm run query -- segment --target main --shard shard2 --id 0
-npm run query -- console "JSON.stringify(Game.gcl)" --target main   # 游戏内表达式执行
-npm run query -- summary --target season
-npm run query -- world --target season                     # 环境概况：赛季能力、反应堆、世界尺寸
-npm run query -- map --target season --around E5S5 --radius 2  # 地图分析：地形、资源、反应堆
-npm run query -- map --target main --shard shard2 --room E42N24 --ascii  # 文字地形图
-npx --no-install screeps-api --help # 官方 CLI 帮助
+# 查询（只读）
+node bin/screeps-assistant.js summary --target main --shard shard2
+node bin/screeps-assistant.js room E43N28 --target main --shard shard2              # 房间摘要
+node bin/screeps-assistant.js room E43N28 --objects --filter type=creep --fields name,x,y,hits,fatigue --target main --shard shard2  # 全部对象，不需要视野
+node bin/screeps-assistant.js history E43N28 --interval 180 --target main --shard shard2  # 官方房间统计
+node bin/screeps-assistant.js memory rooms.E43N28 --target main --shard shard2      # 路径用位置参数；省略路径即查根
+node bin/screeps-assistant.js segment --id 0 --target main --shard shard2
+node bin/screeps-assistant.js code --target ptr                                     # 核对 PTR 上的代码分支
+node bin/screeps-assistant.js world --target season                                 # 环境概况：赛季能力、反应堆、世界尺寸
+node bin/screeps-assistant.js map --target main --shard shard2 --room E43N28 --ascii  # 文字地形图
+
+# 游戏内表达式（探针放 probes/，--file 可直接写探针名）
+node bin/screeps-assistant.js console --expr "Game.time" --target main --shard shard2
+node bin/screeps-assistant.js console --file my-probe --target main --shard shard2
 
 # 本地验证
 npm test
@@ -54,23 +62,20 @@ node tools/backup/pull-code.js main ./dist # 拉取指定分支到指定目录
 node tools/backup/pull-code.js main ./dist --target main --account yachiyo # 多账号拉取
 ```
 
+不要经 `npm run query --` 传 console 表达式：Windows 的 cmd.exe 会把 `=>` 里的 `>` 当重定向。
+
 ## 配置说明
 
-`.screeps.yml` 使用 [SS3 Unified Credentials File](https://github.com/screepers/screepers-standards/blob/master/SS3-Unified_Credentials_File.md) 格式：
+`.screeps.yml` 使用 [SS3 Unified Credentials File](https://github.com/screepers/screepers-standards/blob/master/SS3-Unified_Credentials_File.md) 格式，`--target` 选择其中的服务器块。内置目标 `main`、`ptr`、`season`、`pserver`；服务器块里可选的 `shards` / `defaultShard` / `codeBranch` 会覆盖内置默认值，内置之外的服务器块也能直接当目标。多账号挂在服务器块的 `accounts` 下，用 `--account` 选择。完整示例见 [`README.md`](./README.md)。
 
 ```yaml
 servers:
   main:
-    host: screeps.com
-    protocol: https
+    url: https://screeps.com/
     token: "你的auth-token"
   ptr:
-    host: screeps.com
-    path: /ptr
-
-configs:
-  default:
-    defaultShard: "shard0"    # 默认 shard
+    url: https://screeps.com/ptr/
+    token: "你的auth-token"   # PTR 与正式服共用 token
 ```
 
 Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成。
@@ -88,7 +93,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
 
 | 仓库 | 说明 |
 |------|------|
-| `D:\workspace\个人\screeps\screeps-bot` | 游戏 AI 代码、领域设计与实现计划（TypeScript + esbuild） |
+| `../screeps-bot`（同级目录） | 游戏 AI 代码、领域设计与实现计划（TypeScript + esbuild） |
 | `https://github.com/zkl2333/screeps-bot` | bot 的 GitHub 仓库，**唯一正式部署入口** |
 
 ## ⚠️ 注意事项
@@ -160,6 +165,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
   - 排查、评估和 review 默认只执行只读操作；用户明确要求执行普通游戏操作时，可以根据已确认的目标和 bot API 构造并执行相应 Console 表达式
   - 重生、放弃房间等不可逆游戏操作，执行前必须明确告知影响
   - **bot 正式部署只能走 GitHub Actions，禁止直接 API 提交代码**
+- **探针：** 线上排查先用内置命令（`room --objects`、`memory` 加 `--filter` / `--fields`、`history`），读 bot 运行时状态才写 console 探针；探针放 `probes/`（不入库），不要放仓库根目录。
 
 每次处理任务时，优先读取本目录及相关子目录的 `AGENTS.md`，再根据需要查询 Screeps API 和游戏状态。不要把本仓库当成 bot 设计仓库或旁路发布通道。
 
@@ -178,27 +184,35 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
 - 查询结果默认是临时输出；需要长期保留时写入 bot 的对应领域或 `handbook/operations/`。
 - 不创建 `.agent`、`.agents`、`agent-memory` 或新的项目计划文件；根目录 `AGENTS.md` 是唯一 Agent 规则入口。
 
-### 官方 CLI
+### 入口优先级
 
-Agent 查询 Screeps 官方数据时，统一使用上游 `screeps-api` CLI，入口命令为：
+1. **本工具的 CLI 和 MCP 是主入口。** 目标、分片、多账号和输出选项（`--pick` / `--filter` / `--fields` / `--compact`）在所有命令上一致。已封装的端点不要再走上游 CLI：
 
-```bash
-npx --no-install screeps-api call <method> ...
-```
+   | 上游方法 | 本工具命令 |
+   |---|---|
+   | `gameTime`、`gameWorldSize` | `world` |
+   | `authMe` | `account` |
+   | `userRooms` | `rooms` |
+   | `gameRoomObjects` | `room <房间> --objects`（摘要用 `room <房间>`） |
+   | `gameRoomOverview` | `history <房间>` |
+   | `userMemoryGet` | `memory <路径>` |
+   | `userMemorySegmentGet` | `segment --id <id>` |
+   | `userCodeGet` | `code` |
+   | `gameMarketMyOrders` | `market` |
+   | `userMessagesIndex`、`userMessagesUnreadCount` | `messages` |
+   | `gameShardsInfo` | `shards` |
+   | `gameRoomStatus`、`gameRoomTerrainUnencoded` | `map` |
 
-常用只读方法包括：
+2. **上游 `screeps-api` CLI 只做兜底**，用于本工具没封装的只读端点：
 
-- 地图与房间读取：`gameMapStats`、`gameTime`、`gameWorldSize`、`gameRoomDecorations`、`gameRoomObjects`、`gameRoomStatus`、`gameRoomTerrain`、`gameRoomTerrainUnencoded`、`gameRoomOverview`
-- 市场与 Shard：`gameMarketOrdersIndex`、`gameMarketMyOrders`、`gameMarketOrders`、`gameMarketStats`、`gameShardsInfo`
-- 用户、Memory 与消息：`userMemoryGet`、`userMemorySegmentGet`、`userRooms`、`userCodeGet`、`userMessagesList`、`userMessagesIndex`、`userMessagesUnreadCount`
-- 历史与实验数据：`history`、`experimentalPvp`、`experimentalNukes`、`warpathBattles`
+   ```bash
+   npx --no-install screeps-api call <method> ...
+   ```
 
-官方 CLI 的 `call` 直接调用客户端方法；日常外矿排查不需要额外的数组参数方法。
+   常用的未封装只读方法：市场 `gameMarketOrdersIndex`、`gameMarketOrders`、`gameMarketStats`、`userMoneyHistory`；地图 `gameMapStats`、`gameRoomTerrain`、`gameRoomDecorations`；消息 `userMessagesList`；历史与实验数据 `history`（房间回放）、`experimentalPvp`、`experimentalNukes`、`warpathBattles`。
 
-`rooms` 是逗号分隔的房间名列表；普通统计 `stat` 为 `creepsLost`、`creepsProduced`、`energyConstruction`、`energyControl`、`energyCreeps`、`energyHarvested` 或 `powerProcessed`，`map-stats` 另外支持 `owner0` 和 `claim0`；`resource` 使用 `screeps-api` 的 `MarketResources` 值；`mode` 为 `world` 或 `power`；`interval` 通常为 `8`、`180` 或 `1440`，PVP/Warpath 接口的 interval 是其独立的 tick 参数。
+   上游 CLI 要在本仓库目录下运行才能找到 `.screeps.yml`，用 `--server <名字>` 选服务器块（默认 `main`），只用服务器块自身的 token，不认本工具的 `accounts` 和目标覆盖字段。房间和 shard 应显式传入。`gameMapStats` 的 `rooms` 是逗号分隔的房间名列表，`stat` 另外支持 `owner0` 和 `claim0`；`resource` 使用 `screeps-api` 的 `MarketResources` 值；PVP/Warpath 接口的 interval 是独立的 tick 参数。完整命令以 `npx --no-install screeps-api --help` 为准。
 
-官方 CLI 默认输出 JSON。房间和 shard 应显式传入，避免使用默认值查询错 shard。完整命令以 `npx --no-install screeps-api --help` 为准。
+上游 CLI 也暴露写入接口。Agent 只能用它的只读方法；禁止经上游 CLI 调用代码提交、Memory/Segment 写入、`userConsole`、建筑/旗帜/Intent、重生/放弃房间、市场写入、消息发送/标记已读或装饰修改等副作用 API。游戏内表达式一律走本工具的 `console` 命令（带请求 ID 匹配和同 ID 去重），不要用上游的 `userConsole`。正式 bot 部署仍只能走 GitHub Actions。
 
-官方 CLI 也暴露写入接口。Agent 默认只能使用只读方法；禁止调用代码提交、Memory/Segment 写入、Console、建筑/旗帜/Intent、重生/放弃房间、市场写入、消息发送/标记已读或装饰修改等副作用 API。正式 bot 部署仍只能走 GitHub Actions。
-
-官方房间统计使用 `room-overview` 查询。常用字段包括：`energyHarvested`（采集）、`energyConstruction`（建造和维修消耗）、`energyCreeps`（Spawn 与 Renew 消耗）、`energyControl`（升级产生的 GCL 进度，不是 Energy 数量）、`creepsProduced`、`creepsLost` 和 `powerProcessed`。返回值中的 `stats` 是时间序列，`totals` 是区间总计，`statsMax` 是区间最大值；`interval` 支持 `8`、`180`、`1440` 分钟。统计只能说明官方记录的区间数据，不能直接替代完整的房间实时 Energy 收支。
+官方房间统计用 `history <房间>` 查询，字段含义见 [`docs/api/screeps-api.md`](./docs/api/screeps-api.md) 的「官方房间统计」。统计只能说明官方记录的区间数据，不能直接替代完整的房间实时 Energy 收支。

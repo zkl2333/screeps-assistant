@@ -66,7 +66,7 @@
 ## `objectSummary` 房间摘要字段
 
 - **状态：** `verified`
-- **来源：** `src/api/client.js` → `objectSummary(objects, userId)`，由 `npm run query -- room` 输出。
+- **来源：** `src/api/client.js` → `objectSummary(objects, userId)`，由 `room` 命令输出；要看全部原样对象用 `room <房间> --objects`。
 - `towers` / `spawns` / `labs` / `factories`：房间内该类型建筑**总数**（含敌方），用于敌情判断；勿当作己方数量。
 - `ownTowers` / `ownSpawns` / `ownLabs` / `ownFactories`：仅当前账号拥有的数量。
 - `storageEnergy` / `terminalEnergy` / `spawning` / `constructionSites`：仍只统计己方。
@@ -89,29 +89,28 @@
 
 ## 官方房间统计
 
+- **状态：** `verified`
+- **验证日期：** 2026-11-05（正式服 shard2，E43N28，三档 interval 各取一次）
 - **客户端方法：** `api.gameRoomOverview(room, interval, shard)`
 - **端点：** `GET /api/game/room-overview`
-- **示例：** `npx --no-install screeps-api call gameRoomOverview E42N24 8 shard2`
-- `interval=8` 表示每 8 分钟一个数据点，返回最近 64 分钟；`180` 为最近 24 小时，`1440` 为最近 8 天。
-- 返回 `stats`（时间序列）、`totals`（区间总计）和 `statsMax`（区间最大值）。时间序列中的 `endTime` 是官方单调递增标识，不是游戏 tick 或 Unix 时间戳。
+- **命令：** `node bin/screeps-assistant.js history E43N28 --interval 8 --target main --shard shard2`
+- `interval` 是每格分钟数，只有三档：`8` 返回 8 格（约 64 分钟），`180` 返回 8 格（约 24 小时），`1440` 实测返回 7 格（按天）。
+- 返回 `stats`（时间序列）、`totals`（区间总计）和 `statsMax`。`statsMax` 的键形如 `energy8`、`creepsProduced180`，同一 interval 下各能量项的值相同，不是本房间的区间最大值；`history` 不输出它。
+- 时间序列的 `endTime` 不是游戏 tick，也不是直接的 Unix 时间戳，而是以 `interval` 分钟为单位的 Unix 时间格号：`endTime × interval × 60000` 就是这一格结束时刻的 Unix 毫秒。相邻两格差 1；最后一格通常还没结束（结束时刻在当前时间之后），数值仍在累积。`history` 命令已换算成带时区的本地时间，并给进行中的格子标 `inProgress`。
+- `totals` 只列非零项，数值等于序列求和；`history` 的 `total` 按序列求和，零值项也有。
 - 官方房间统计包括：`energyHarvested`、`energyConstruction`、`energyCreeps`、`energyControl`、`creepsProduced`、`creepsLost`、`powerProcessed`。
 - `energyConstruction` 是 Creep 建造和维修消耗；`energyCreeps` 是 Spawn 和 Renew 消耗；`energyControl` 表示升级产生的 GCL 进度，不是 Energy 数量。
+- 赛季服的房间统计时有时无，没有数据时不能当作该房间没有活动。
+- 注意 `api.history(room, tick, shard)` 是另一个接口：房间回放（`/room-history/...`），按 100 tick 一块；不要和房间统计混用。
 - 该工具只读，不向 Screeps 提交游戏操作；官方接口的读取发生在 Bot 外部，不占 Bot 的游戏 CPU。
 
-## 官方 CLI
+## 上游 CLI
 
-本仓库直接使用上游 `screeps-api` CLI。通用 HTTP 查询通过 `call` 调用 `ScreepsHttpClient` 方法：
+本仓库命令没封装的只读端点，用上游 `screeps-api` CLI 兜底：
 
 ```bash
-npx --no-install screeps-api call gameRoomObjects E42N24 shard2
-npx --no-install screeps-api call userMemoryGet remoteMining shard2
-npx --no-install screeps-api call gameTime shard2
+npx --no-install screeps-api call gameMarketOrders O shard2
+npx --no-install screeps-api call userMoneyHistory
 ```
 
-完整命令以 `npx --no-install screeps-api --help` 和 `npx --no-install screeps-api call --help` 为准。
-
-日常外矿排查使用的客户端方法均可直接通过官方 CLI 的 `call` 调用。
-
-官方 CLI 是通用客户端入口，除读取外还支持 Memory、Segment 和代码写入能力。生产查询只使用只读方法，任何写入操作必须先获得明确授权。
-
-官方 CLI 的 `call` 可以访问更多客户端方法，也包含写入能力。Agent 查询时只使用只读方法，不调用 `userCodeSet`、`userMemorySet`、`userMemorySegmentSet`、`userConsole`、建筑/旗帜/Intent、重生、市场写入、消息发送/标记已读或装饰修改等副作用接口。
+已封装端点与本仓库命令的对照、上游 CLI 的配置差异和禁用的写入接口，见 [`AGENTS.md`](../../AGENTS.md) 的「入口优先级」。完整命令以 `npx --no-install screeps-api --help` 和 `npx --no-install screeps-api call --help` 为准。

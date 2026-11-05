@@ -169,11 +169,11 @@ RCL6：terminal
 6. CPU 是否使部分逻辑未执行
 ```
 
-正式世界的只读状态使用 `screeps-api` CLI，并明确 shard：
+正式世界的只读状态在 screeps-assistant 仓库目录下用本仓库 CLI 读取，并明确 shard：
 
 ```bash
-npx --no-install screeps-api call gameTime shard2
-npx --no-install screeps-api call gameRoomObjects <room> shard2
+node bin/screeps-assistant.js world --target main --shard shard2 --pick gameTime
+node bin/screeps-assistant.js room <room> --objects --target main --shard shard2
 ```
 
 ## 何时进入下一阶段

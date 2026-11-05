@@ -26,7 +26,7 @@ metadata:
 
 ## 核查原则
 
-1. **先实时、后推断。** `gameRoomObjects <room> shard2` 是房间现场；Memory 只表示 bot 的记录，可能遗留过期 creep 或旧敌情。
+1. **先实时、后推断。** `room <room> --objects`（官方 `gameRoomObjects`）是房间现场，不需要视野；Memory 只表示 bot 的记录，可能遗留过期 creep 或旧敌情。
 2. **区分四种状态。** 分别记录 controller owner/reservation、source/container 能量、我方 creep、敌方 creep/墓碑/ruin。不能因 creep 通行就认定正在采矿。
 3. **时间点不能混用。** 当前无 reservation 不代表战斗发生时没有 reservation；当前无尸体不代表刚才没有败仗。
 4. **CPU 用官方 WebSocket。** `user/cpu` 是实时 CPU 来源；bot 的 `Memory.stats` 只可用于热点参考。
@@ -36,13 +36,17 @@ metadata:
 
 ### 1. 读取策略和 operation
 
-用 `terminal` 调用：
+在 screeps-assistant 仓库目录用 `terminal` 按路径读取，不要整份读 Memory：
 
 ```bash
-npx --no-install screeps-api call userMemoryGet "" shard2
+node bin/screeps-assistant.js memory strategy.remoteHarvesting --target main --shard shard2
+node bin/screeps-assistant.js memory operations.mine:<room> --target main --shard shard2
+node bin/screeps-assistant.js memory strategy.expand --target main --shard shard2
+node bin/screeps-assistant.js memory squads.expand --target main --shard shard2
+node bin/screeps-assistant.js memory squads.expandGuard --target main --shard shard2
 ```
 
-提取：
+关注：
 
 ```text
 strategy.remoteHarvesting.currentCount
@@ -57,10 +61,12 @@ squads.expand / expandGuard
 ### 2. 检查房间现场
 
 ```bash
-npx --no-install screeps-api call gameRoomObjects <room> shard2
+node bin/screeps-assistant.js room <room> --target main --shard shard2            # 摘要
+node bin/screeps-assistant.js room <room> --objects --target main --shard shard2  # 全部对象
+node bin/screeps-assistant.js room <room> --objects --filter type=creep --fields name,username,x,y,body,store --target main --shard shard2
 ```
 
-至少检查：
+带 `user` 的对象会补上 `username`，可用 `--filter username=<玩家>` 只看某个玩家。至少检查：
 
 ```text
 controller：owner、reservation、剩余时间
@@ -109,7 +115,7 @@ operation defense ledger / retired history
 
 只有满足以下全部条件才能建议删除：
 
-1. 通过 `userCodeGet main` 拉取当前线上代码；
+1. 用 `node tools/backup/pull-code.js main <临时目录> --target main` 拉取当前线上代码；
 2. 在线上 bundle 和游戏仓库源码中搜索 `room.memory[数字]`、`Memory.rooms[room][数字]`；
 3. 确认没有读取；
 4. 用户明确同意写入。
@@ -136,7 +142,7 @@ for (const roomName in Memory.rooms) {
 
 ## 验证
 
-- 每项实时结论都有 `gameRoomObjects` 或官方 WebSocket 证据。
+- 每项实时结论都有 `room --objects`（`gameRoomObjects`）或官方 WebSocket 证据。
 - 每次 Memory 写入都完成读回验证。
 - 每次清理后 Console 无 `Error`、`TypeError`、`ReferenceError` 或 `SyntaxError`。
 - 正式 bot 改动的发布结果以 GitHub Actions 成功为准。

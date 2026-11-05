@@ -72,21 +72,21 @@ description: Use when核查Screeps市场、Terminal和资源可达性。
 
 ## 四、核查顺序
 
-目标环境必须显式使用 `shard2`；不要依赖 CLI 默认 shard。
+目标环境必须显式使用 `shard2`；不要依赖 CLI 默认 shard。命令在 screeps-assistant 仓库目录下运行；本仓库没封装的只读端点（资金流水、市场行情）用上游 `npx --no-install screeps-api call` 兜底。
 
 ### 1. 当前 Tick 与账户
 
 ```bash
-npx --no-install screeps-api call gameTime shard2
-npx --no-install screeps-api call authMe
+node bin/screeps-assistant.js world --target main --shard shard2 --pick gameTime
+node bin/screeps-assistant.js account --target main
 ```
 
-账户市场余额读取 `authMe.money`。`authMe.credits` 不是当前市场余额口径，不能混用。
+账户市场余额读取 `account` 输出的 `money`（即 `authMe.money`）。`credits` 不是当前市场余额口径，不能混用。
 
 ### 2. 自有订单与资金流水
 
 ```bash
-npx --no-install screeps-api call gameMarketMyOrders shard2
+node bin/screeps-assistant.js market --target main --shard shard2
 npx --no-install screeps-api call userMoneyHistory
 ```
 
@@ -101,7 +101,8 @@ npx --no-install screeps-api call userMoneyHistory
 ### 3. 房间实时结构与库存
 
 ```bash
-npx --no-install screeps-api call gameRoomObjects E42N24 shard2
+node bin/screeps-assistant.js room E42N24 --objects --target main --shard shard2
+node bin/screeps-assistant.js room E42N24 --objects --filter type=lab --fields _id,x,y,store,cooldown,actionLog --target main --shard shard2
 ```
 
 至少提取：
