@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const {spawnSync} = require('node:child_process');
 const path = require('node:path');
 const {COMMANDS, commandArgs, decodeStdinChunks, expressionSourceNames, helpText, parseArgs, readConsoleExpression} = require('../src/cli/args');
 const {applyOutputOptions, consoleEnvelope, printResult} = require('../src/cli/output');
@@ -56,11 +57,28 @@ assert.deepEqual(parseArgs(['overview', 'E43N28', '--tick=77950310']), {_: ['E43
 assert.throws(() => parseArgs(['overview', 'E43N28', '--tick']), /参数缺少值：--tick/);
 assert.match(helpText(), /overview <房间>[^\n]*--tick/);
 
-// history 留给房间回放：命令名仍然合法（执行时才报错），但还没实现，帮助里不列。
+// history 是房间回放：--tick 选那个 tick，再加 --to 列出这段 tick 内的变化；help 里有命令行和示例小节。
 assert.ok(COMMANDS.includes('overview'));
 assert.ok(COMMANDS.includes('history'));
 assert.doesNotThrow(() => commandArgs(['history', 'E43N28']));
-assert.doesNotMatch(helpText(), /history <房间>/);
+assert.deepEqual(parseArgs(['history', 'E43N28', '--tick', '77949750', '--to', '77949780']), {_: ['E43N28'], tick: '77949750', to: '77949780', command: 'history'});
+assert.deepEqual(parseArgs(['history', 'E43N28', '--tick=77949750', '--to=77949780']), {_: ['E43N28'], tick: '77949750', to: '77949780', command: 'history'});
+assert.throws(() => parseArgs(['history', 'E43N28', '--tick', '77949750', '--to']), /参数缺少值：--to/);
+assert.match(helpText(), /history <房间>[^\n]*--tick[^\n]*--to/);
+assert.match(helpText(), /房间回放（官方 room-history/);
+assert.match(helpText(), /history E43N28 --tick \d+ --filter type=creep/);
+assert.match(helpText(), /history E43N28 --tick \d+ --to \d+ --filter type=creep --fields tick,op,name,x,y,changes/);
+
+// bin 的 history 分支：参数在联网之前就校验，所以不需要凭据也能确认房间、--tick、--to 都传到了查询层。
+const cliFailure = args => {
+  const result = spawnSync(process.execPath, [path.join(__dirname, '..', 'bin', 'screeps-assistant.js'), ...args], {encoding: 'utf8'});
+  assert.equal(result.status, 1, result.stdout);
+  return result.stderr.trim();
+};
+assert.equal(cliFailure(['history', '--tick', '100']), '查询失败：history 命令需要房间名：history E43N28 或 --room E43N28');
+assert.equal(cliFailure(['history', 'E43N28']), '查询失败：history 需要 --tick <tick>（房间回放）；房间统计请用 overview <房间>');
+assert.equal(cliFailure(['history', '--room', 'E43N28', '--tick', '100', '--to', '50']), '查询失败：--to 必须大于 --tick（收到 --tick 100 --to 50）');
+assert.equal(cliFailure(['history', 'E43N28', '--tick', 'abc']), '查询失败：--tick 必须是非负整数，收到：abc');
 
 const creeps = [
   {name: 'h1', memory: {role: 'harvester', room: 'E1N1'}},

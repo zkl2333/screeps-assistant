@@ -102,8 +102,30 @@
 - 官方房间统计包括：`energyHarvested`、`energyConstruction`、`energyCreeps`、`energyControl`、`creepsProduced`、`creepsLost`、`powerProcessed`。
 - `energyConstruction` 是 Creep 建造和维修消耗；`energyCreeps` 是 Spawn 和 Renew 消耗；`energyControl` 表示升级产生的 GCL 进度，不是 Energy 数量。
 - 赛季服的房间统计时有时无，没有数据时不能当作该房间没有活动。
-- 注意 `api.history(room, tick, shard)` 是另一个接口：房间回放（`/room-history/...`），按 100 tick 一块；它由本工具的 `history` 命令提供，不要和房间统计（`overview`）混用。
+- 注意 `api.history(room, tick, shard)` 是另一个接口：房间回放（`/room-history/...`），按 100 tick 一块；它由本工具的 `history` 命令提供（见下一节「官方房间回放」），不要和房间统计（`overview`）混用。
 - 该工具只读，不向 Screeps 提交游戏操作；官方接口的读取发生在 Bot 外部，不占 Bot 的游戏 CPU。
+
+## 官方房间回放（room-history）
+
+- **状态：** `verified`
+- **验证日期：** 2026-11-05（正式服 shard2，E43N28 等己方房间，只读）
+- **客户端方法：** `api.history(room, tick, shard)`（`ScreepsHttpClient`）
+- **端点：** `GET /room-history/{shard}/{room}/{tick}.json`（路径不在 `/api` 下）
+- **命令：** `node bin/screeps-assistant.js history E43N28 --tick 77949750 [--to 77949780] --target main --shard shard2`
+- `tick` 会向下取整到 100 的倍数，一块覆盖 100 个 tick。**任意房间都有回放**（己方、别人的、没视野的都行），只是**不活跃的房间不记录**。
+- 回包 `{timestamp, room, base, ticks}`：`timestamp` 是这一块写入的 Unix 毫秒（比块结束晚几十秒）；`ticks` 是以 tick 为键的对象。`ticks[base]` 是**完整快照**（`{[_id]: 对象}`，E43N28 约 360 个对象，不含旗子），之后每个 tick 是**相对上一 tick 的差异**。**每块自己独立**：只取一块就能还原块内任意 tick。块内的 tick 从 `base` 起连续，遇到第一个没记录的 tick 就断，所以可能不足 100 帧。
+- 差异格式（与引擎 `getDiff` 一致，已核对源码）：
+  - `diff[id] === null`：这个对象消失了；`id` 在上一帧不存在：`diff[id]` 是完整的新对象；
+  - 否则 `diff[id]` 只含变化的键：值为 `null` 表示这个键被删了或变成 null（分不开）；标量或类型变化给新值；
+  - 值是对象或数组的键只做**一层**子差异：`store: {energy: 50}` 只列变化的子键，子键的值是整个新值；**数组的子差异是以下标为键的对象**（如 creep 的 `body: {"3": {"type":"move","hits":0}}`），不是数组；
+  - 子键被删除时引擎写的是 `undefined`，JSON 序列化会丢掉，所以回放里**看不到“子键被删”**（实测 `store` 里值为 0 的资源键会一直保留，实际几乎碰不到）；
+  - 回放不含旗子；creep 的 `_actionLog`、`_ticksToLive` 和私有的 `say` 已被去掉，其它内部字段仍在（creep 的 `_fatigue`、`_oldFatigue`，tower、link、lab、factory 的 `_actionLog`，spawn、extension 的 `_off`），变化记录里会出现。
+- **tick 标签的含义**：`ticks[N]` 是引擎处理完第 N 个 tick 后的房间现场，也就是 bot 在 `Game.time = N+1` 时看到的状态；bot 在 `Game.time = N` 发出的意图，结果就在 `ticks[N]`。本 tick 新生成的对象（刚孵出的 creep、墓碑）要晚一帧才出现，死掉的 creep 在 `ticks[N]` 已经没了。实测两次：墓碑 `deathTime = 77949718` 在 `ticks[77949719]` 才出现、creep 在 `ticks[77949718]` 就消失；墓碑 `deathTime = 77954062` 在 `ticks[77954063]` 才出现（2026-11-05，shard2，E43N28）。
+- **取不到时是 HTTP 404**：错误对象是 `ScreepsApiError`，状态码在 `error.status`（`error.response` 是 undefined），`message` 是 `Request failed with status code 404`，`error.data` 是 nginx 的 HTML。404 有三种可能，响应里分不出来：① 这一块还没写完——**当前正在进行的那一块查不到**，最新只能查到上一块（实测 `gameTime = 77949738` 时 `77949700` 块 404、`77949600` 块可用）；② 过了保留期；③ 房间那时不活跃。分类要再读一次 `api.gameTime(shard)` 对照当前 tick。工具按约 30 万 tick 粗分：块起点比当前 tick 早得更多的报“已经过了官方的保留期”，保留期内的报“房间不活跃或官方缺块”（保留期内的活跃房间也偶尔整块 404）。
+- **保留期**约 19 天：2026-11-05 08:07（UTC）实测，tick 77655500 的块（写入时间 2026-10-17 04:09 UTC，距当时的 tick 约 30 万）还在，tick 77650000 的块已经 404（中间的块没有逐个探）。按 tick 数算只是约数，实际应按写入时间过期。
+- **块里可能有 `null` 占位帧，也可能整块缺失**（2026-11-05 在 E43N28 上扫描 44 个连续块的实测，不是统计规律）：绝大多数块是“第一帧完整快照 + 99 帧差异”，但 3 块形如“前 98 或 99 帧的值是 `null`，只有最后一两帧有数据”（有数据的第一帧是完整快照，推测是官方写入中断后补写的块），另有 4 块整块 404（在保留期内，房间也是活跃的）。`null` 帧是“没有记录”，不能当成空差异，更不能当成“所有对象消失”。
+- 回放里的 `user` 只是 user id。`GET /api/user/find?id=` 即 `api.userFindById(id)` 能反查：返回 `{ok: 1, user: {_id, username, badge, gcl, power, steam}}`（**不要输出 `steam`**，只取 `username`）；id 不存在时返回 `{ok: 1, user: {error: '…'}}` 之类，要容错。特殊 id：`'2'` 是 `Invader`，`'3'` 是 `Source Keeper`（不是合法 ObjectId，别拿去查）。
+- 还原：取一块，`state = structuredClone(ticks[base])`，之后逐 tick 应用差异即得到任意 tick 的现场。跨块那一格没有差异可用（下一块的第一帧是快照），用上一块还原到最后一帧的状态和下一块的快照逐对象比出差异。引擎在差异里把“键被删”也写成 `null`，所以还原出来的状态会留着 `null`，而官方快照里直接没有这个键（实测如 creep 的 `_oldFatigue`）；比较时要把 `null` 和缺键当成同一回事，否则块边界会多出没发生过的变化。用这个方法对 E43N28 的 9 对相邻块实测，块边界那一格的变化条数（9～26）和块内相邻帧（平均约 20）同量级，没有累积漂移。
 
 ## 上游 CLI
 

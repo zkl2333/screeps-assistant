@@ -206,7 +206,8 @@ async function main() {
     return printResult(await queries.getRoomStats({...opts, room, interval: args.interval, stat: args.stat, tick: args.tick}), args);
   }
   if (args.command === 'history') {
-    throw new Error('history 现在指房间回放（按 tick 还原房间现场），还没实现；房间统计请用 overview <房间>');
+    const room = roomArg(args, 'history');
+    return printResult(await queries.getRoomHistory({...opts, room, tick: args.tick, to: args.to}), args);
   }
   if (args.command === 'shards') return printResult(await queries.listShards(opts), args);
   if (args.command === 'world') return printResult(await readWorld(opts), args);

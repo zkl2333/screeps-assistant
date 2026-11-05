@@ -1,6 +1,7 @@
 'use strict';
 
 const client = require('./client');
+const {HISTORY_CHUNK, chunkBase, replayChanges, replayState} = require('./replay');
 const {accountSummary, objectSummary, readSummary} = client;
 
 function decodeMemoryValue(value) {
@@ -63,11 +64,11 @@ function parseStatsInterval(value) {
   return interval;
 }
 
-/** tick 必须是非负整数；CLI 传来的是字符串，空串也算给了，不能悄悄当成没给。 */
-function parseTick(value) {
+/** tick 必须是非负整数；CLI 传来的是字符串，空串也算给了，不能悄悄当成没给。name 是报错里的参数名。 */
+function parseTick(value, name = 'tick') {
   if (value === undefined || value === null) return undefined;
   const tick = typeof value === 'string' && /^\s*\d+\s*$/.test(value) ? Number(value) : value;
-  if (!Number.isInteger(tick) || tick < 0) throw new Error(`tick 必须是非负整数，收到：${value}`);
+  if (!Number.isInteger(tick) || tick < 0) throw new Error(`${name} 必须是非负整数，收到：${value}`);
   return tick;
 }
 
@@ -191,6 +192,86 @@ async function getRoomStats(options = {}) {
   return {target, shard, room: options.room, ...result};
 }
 
+/** --tick 到 --to 最多相隔多少 tick（最多 11 块）。 */
+const HISTORY_MAX_SPAN = 1000;
+/**
+ * 回放保留期的粗略分界（tick 数），只用来给 404 分类。
+ * 正式服 2026-11-05 实测：约 30 万 tick 前的块还在，约 30.5 万 tick 前的块已 404；官方实际按写入时间过期，所以这只是粗略分界。
+ */
+const HISTORY_RETENTION_TICKS = 300_000;
+/** 回放里这两个 user id 不是玩家，也不是合法 ObjectId，不能拿去 userFindById。 */
+const SPECIAL_USERS = Object.freeze({'2': 'Invader', '3': 'Source Keeper'});
+
+/**
+ * 取一块房间回放。取不到时官方返回 404，响应里分不出原因：这一块还没写完、已过保留期、房间那时不活跃，
+ * 保留期内的活跃房间也偶尔整块缺失；再读一次当前 tick 猜最可能的一种，读不到就给通用说明。其它错误原样抛出。
+ * tick 是这一块里用户要的那个 tick。
+ */
+async function fetchHistoryChunk(api, {room, shard, base, tick}) {
+  try {
+    return await api.history(room, base, shard);
+  } catch (error) {
+    if (error?.status !== 404 && error?.response?.status !== 404) throw error;
+    let current;
+    try {
+      current = (await attempt(() => api.gameTime(shard)))?.time;
+    } catch {
+      current = undefined;
+    }
+    const span = `${base}～${base + HISTORY_CHUNK - 1}`;
+    if (!Number.isFinite(current)) throw new Error(`服务器没有 ${room} 的回放块 ${span}（可能还没写完、已过保留期，或房间那时不活跃）`);
+    if (tick > current) throw new Error(`tick ${tick} 还没到（当前 tick ${current}）`);
+    if (base >= chunkBase(current)) {
+      throw new Error(`tick ${tick} 所在的回放块（${span}）还没写完；官方每 ${HISTORY_CHUNK} tick 写一块，现在最新能查到 tick ${chunkBase(current) - 1}`);
+    }
+    if (current - base > HISTORY_RETENTION_TICKS) {
+      throw new Error(`服务器没有 ${room} 的回放块 ${span}：已经过了官方的保留期（实测约 30 万 tick，约 19 天）`);
+    }
+    throw new Error(`服务器没有 ${room} 的回放块 ${span}：房间那时不活跃，或官方缺了这一块（实测保留期内的活跃房间也偶尔整块 404，换相邻的 tick 试试）`);
+  }
+}
+
+/**
+ * user id 数组（去重去空）→ {id: {username}}，正好是 withUsernames 要的 users 形状。
+ * 特殊 id 直接用，其余按 id 查；查不到或失败的 id 不出现，对应对象就没有 username 字段。只取 username，不带 userFindById 回包里的其它字段。
+ */
+async function resolveUsernames(api, ids) {
+  const users = {};
+  const lookup = [];
+  for (const id of new Set(ids.filter(id => !isBlank(id)))) {
+    if (Object.hasOwn(SPECIAL_USERS, id)) users[id] = {username: SPECIAL_USERS[id]};
+    else lookup.push(id);
+  }
+  const found = await Promise.allSettled(lookup.map(id => attempt(() => api.userFindById(id))));
+  found.forEach((result, index) => {
+    const username = result.status === 'fulfilled' ? result.value?.user?.username : undefined;
+    if (typeof username === 'string') users[lookup[index]] = {username};
+  });
+  return users;
+}
+
+/**
+ * 官方房间回放（room-history）：任意房间都能查，不需要视野。只给 tick 时还原那一刻的房间现场（和 room --objects 同形状的对象数组）；
+ * 再给 to 时返回 (tick, to] 内每个对象的变化记录。带 user 的结果补上 username。
+ */
+async function getRoomHistory(options = {}) {
+  if (!options.room) throw new Error('history 查询需要 room');
+  const tick = parseTick(options.tick, '--tick');
+  if (tick === undefined) throw new Error('history 需要 --tick <tick>（房间回放）；房间统计请用 overview <房间>');
+  const to = parseTick(options.to, '--to');
+  if (to !== undefined) {
+    if (to <= tick) throw new Error(`--to 必须大于 --tick（收到 --tick ${tick} --to ${to}）`);
+    if (to - tick > HISTORY_MAX_SPAN) throw new Error(`--tick 到 --to 最多相隔 ${HISTORY_MAX_SPAN} tick（收到 ${to - tick}）；缩小范围，或分段查询`);
+  }
+  const {api, shard} = await client.context(options);
+  const chunks = [];
+  for (let base = chunkBase(tick); base <= chunkBase(to ?? tick); base += HISTORY_CHUNK) {
+    chunks.push(await fetchHistoryChunk(api, {room: options.room, shard, base, tick: Math.max(tick, base)}));
+  }
+  const result = to === undefined ? Object.values(replayState(chunks[0], tick)) : replayChanges(chunks, tick, to);
+  return withUsernames(result, await resolveUsernames(api, result.map(item => item.user)));
+}
+
 async function getMemory(options = {}) {
   if (options.path === undefined || options.path === '') throw new Error('memory 查询需要非空 path，避免无意读取整个 Memory');
   const {api, target, shard} = await client.context(options);
@@ -215,13 +296,17 @@ function getStatus(options = {}) {
 }
 
 module.exports = {
+  HISTORY_MAX_SPAN,
+  HISTORY_RETENTION_TICKS,
   decodeMemoryValue,
   estimateTick,
+  fetchHistoryChunk,
   formatLocalTime,
   formatRoomStats,
   getAccount,
   getMemory,
   getRoom,
+  getRoomHistory,
   getRoomObjects,
   getRoomStats,
   getSegment,
@@ -229,5 +314,6 @@ module.exports = {
   listRooms,
   listShards,
   readSummary,
+  resolveUsernames,
   withUsernames,
 };

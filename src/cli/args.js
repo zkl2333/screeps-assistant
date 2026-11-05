@@ -9,7 +9,7 @@ const BOOLEAN_FLAGS = new Set(['all', 'ascii', 'no-cache', 'summary-only', 'comp
 const VALUE_FLAGS = new Set([
   'target', 'shard', 'account', 'room', 'path', 'id', 'expr', 'file', 'timeout', 'branch',
   'stat', 'interval', 'tick', 'rooms', 'around', 'radius', 'concurrency', 'cache-ttl',
-  'retry', 'repeat', 'times', 'pick', 'filter', 'fields',
+  'retry', 'repeat', 'times', 'pick', 'filter', 'fields', 'to',
 ]);
 const PROBES_DIR = path.join(__dirname, '..', '..', 'probes');
 const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, ...VALUE_FLAGS]);
@@ -143,6 +143,7 @@ function helpText() {
   rooms                    当前分片的己方房间
   room <房间>              房间现场摘要；--objects 输出全部对象（不需要视野、不占 console 额度）
   overview <房间>          官方房间统计；--interval 8|180|1440（每格分钟数），--stat 只看一项，--tick 只看覆盖该 tick 的那一格
+  history <房间>           房间回放：--tick <tick> 还原那个 tick 的房间现场；再加 --to <tick> 列出这段 tick 内每个对象的变化（最多 1000 tick）
   memory [路径]            按路径读 Memory；省略路径读整个 Memory
   segment --id <id,...>    读 Memory Segment
   console                  执行游戏内表达式（见下）
@@ -156,6 +157,11 @@ function helpText() {
   --shard <分片>   --account <账号>   --compact
   --pick <路径>            先取结果的子路径，例如 overview 的 --pick stats
   --filter <路径=值,...>   --fields <路径,...>   作用于数组或对象集合（有 --pick 时作用于取出的部分）
+
+房间回放（官方 room-history：任意房间都能查，不需要视野；约 19 天内、每 100 tick 一块，正在进行的这一块要等写完）：
+  node bin/screeps-assistant.js history E43N28 --tick 77949750 --filter type=creep --fields name,username,x,y,hits
+  node bin/screeps-assistant.js history E43N28 --tick 77949750 --to 77949780 --filter type=creep --fields tick,op,name,x,y,changes
+tick N 是处理完第 N 个 tick 后的现场（bot 在 Game.time=N+1 看到的状态）；本 tick 新生成的对象晚一帧出现。
 
 console 表达式三选一：位置参数、--expr、--file <路径或 probes/ 下的探针名>；--file - 读 stdin
   node bin/screeps-assistant.js console --file my-probe --target main --shard shard2

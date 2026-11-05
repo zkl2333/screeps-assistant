@@ -98,6 +98,10 @@ node bin/screeps-assistant.js overview E43N28 --interval 180 --stat creepsLost -
 node bin/screeps-assistant.js overview E43N28 --pick stats --fields total --compact --target main --shard shard2
 node bin/screeps-assistant.js overview E43N28 --tick 77950310 --target main --shard shard2
 
+# 房间回放（官方 room-history，任意房间可查）：某个 tick 的房间现场，或一段 tick 内每个对象的变化
+node bin/screeps-assistant.js history E43N28 --tick 77949750 --filter type=creep --fields name,username,x,y,hits --target main --shard shard2
+node bin/screeps-assistant.js history E43N28 --tick 77949750 --to 77949780 --filter type=creep --fields tick,op,name,x,y,changes --target main --shard shard2
+
 # Memory（路径可用位置参数或 --path；省略即查整个 Memory）与 Segment
 node bin/screeps-assistant.js memory rooms.E43N28 --target main --shard shard2
 node bin/screeps-assistant.js segment --id 0,1 --target main --shard shard2
@@ -129,6 +133,16 @@ node bin/screeps-assistant.js map --target season --around E5S5 --radius 3 --sum
 - `--tick <tick>` 只保留覆盖该 tick 的那一格（`total` 也只算这一格，顶层多一个 `tick`）；不给 `--interval` 时自动从 8、180、1440 里选能覆盖它的最细一档。tick 还没到、早于最大一档的范围、或读不到时钟时会报错；
 - 统计项：`energyHarvested`（采集）、`energyConstruction`（建造和维修）、`energyCreeps`（孵化和续命）、`energyControl`（升级产生的 GCL 进度，不是能量）、`creepsProduced`、`creepsLost`、`powerProcessed`；`--stat` 只看一项；
 - 赛季服的房间统计时有时无，没有数据时 `stats` 为空。
+
+**房间回放（`history`）**读官方 room-history：通知、报错或 console 日志里只有一个 `Game.time` 时，用它看那一刻房间里发生了什么。任意房间都能查（己方、别人的、没视野的都行），不占 console 额度。两种用法见上面的示例：
+
+- 只给 `--tick`：还原那个 tick 的房间现场。输出是和 `room --objects` 同形状的对象数组（官方原样字段），带 `user` 的对象补上 `username`；`--filter` / `--fields` 直接可用，不需要 `--pick`。
+- 再给 `--to`（必须大于 `--tick`，最多相隔 1000 tick）：输出 `(tick, to]` 内每个对象的变化记录，按 tick 升序。每条记录的字段：`tick`、`op`（`added` 新出现、`removed` 消失、`changed` 有变化）、`id`、`type`、`structureType`（工地、建筑才有）、`name`（墓碑取 `creepName`）、`user`、`x`、`y`、`changes`（只有 `changed` 带）、`username`。`x`、`y` 是变化之后的位置，`removed` 取消失前的位置。
+- `changes` 是官方逐 tick 差异的原样：只列这一格变化的键；值为 `null` 表示这个键被删或变成了 null；`store`、`body` 这类子对象只列变化的子键，数组（如 `body`）以下标为键。子键被删在官方数据里看不到。
+- **tick 的含义**：回放里的 tick N 是引擎处理完第 N 个 tick 之后的房间现场，也就是 bot 在 `Game.time = N+1` 时看到的状态；bot 在 `Game.time = N` 发出的意图，结果就在 tick N 里。本 tick 新生成的对象（刚孵出的 creep、墓碑）要晚一帧才出现，死掉的 creep 在 tick N 就已经不在了。例如墓碑的 `deathTime` 是 77954062，它在 tick 77954063 才出现，那只 creep 在 tick 77954062 就已消失。
+- 官方每 100 tick 存一块（块起点是 100 的整数倍，块里第一帧是完整快照，之后是逐 tick 差异）。只给 `--tick` 时只请求它所在的那一块；给了 `--to` 就按顺序请求涉及的每一块（1000 tick 最多 11 块，实测 9 块约 8 秒），块边界那一格用上一块的最后一帧和下一块的快照比出差异。
+- 取不到时官方返回 404，响应里分不出原因，工具会再读一次当前 tick 帮忙判断：① 这一块还没写完（正在进行的这一块查不到，最新只能查到当前 tick 向下取整到 100 再减 1）；② 过了保留期（正式服实测约 19 天，约 30 万 tick）；③ 房间那时不活跃，官方不记录。偶尔还会遇到块里前面全是 `null`、只记录了末尾一两帧（报“回放块缺少起始帧”，并写明这一块从哪个 tick 才开始有记录），或整块缺失（同上面的 404）；块里记录到中途就断的，报错会写明记录到哪个 tick。
+- 回放里的 `user` 只是 user id，工具用 `userFindById` 反查出 `username`（只取用户名；`Invader`、`Source Keeper` 内置），查不到的对象没有 `username` 字段。
 
 `map` 命令说明：
 
@@ -186,7 +200,7 @@ node bin/screeps-assistant.js console --file probe.js --target main --raw --retr
 node bin/screeps-assistant.js console --file my-probe --target main --shard shard2
 ```
 
-写探针前先看内置命令能不能直接回答：房间现场用 `room --objects`，Memory 用 `memory` 加 `--filter` / `--fields`，房间统计用 `overview`。只有要读 bot 的运行时状态（`global` 上的对象、bot 自己的方法）时才需要探针。详见 [`probes/README.md`](probes/README.md)。
+写探针前先看内置命令能不能直接回答：房间现场用 `room --objects`，某个历史 tick 的现场用 `history`，Memory 用 `memory` 加 `--filter` / `--fields`，房间统计用 `overview`。只有要读 bot 的运行时状态（`global` 上的对象、bot 自己的方法）时才需要探针。详见 [`probes/README.md`](probes/README.md)。
 
 ## 输出选项
 

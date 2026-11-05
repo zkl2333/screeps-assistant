@@ -11,7 +11,7 @@
     "query": "node bin/screeps-assistant.js",
     "mcp": "node src/mcp/server.mjs",
     "pull": "node tools/backup/pull-code.js",
-    "test": "node tests/client.test.js && node tests/map.test.js && node tests/console-protocol.test.js && node tests/console-session.test.js && node tests/cli.test.js && node tests/queries.test.js"
+    "test": "node tests/client.test.js && node tests/map.test.js && node tests/console-protocol.test.js && node tests/console-session.test.js && node tests/cli.test.js && node tests/replay.test.js && node tests/queries.test.js"
   },
   "keywords": [],
   "author": "",

@@ -3,6 +3,8 @@
 const assert = require('node:assert/strict');
 const client = require('../src/api/client');
 const queries = require('../src/api/queries');
+const {HISTORY_CHUNK, chunkBase} = require('../src/api/replay');
+const {applyOutputOptions} = require('../src/cli/output');
 
 (async () => {
   // room-overview 的 endTime 以 interval 分钟为单位；最后一格还没结束。
@@ -310,6 +312,241 @@ const queries = require('../src/api/queries');
       assert.equal(overviewCalls.length, mark + 1, label);
       await assert.rejects(() => queries.getRoomStats({target: 'main', shard: 'shardX', room: 'E49N32', tick: gameTime}), /读不到当前 tick 或分片平均 tick 时长，无法按 tick 查询/, label);
       assert.equal(overviewCalls.length, mark + 1, label);
+    }
+    client.context = mockContext();
+
+    // 房间回放（history）：mock 的 api.history 按 base 返回自造的块，并记录调用。
+    {
+      const historyOptions = {target: 'main', shard: 'shardX', room: 'E49N32'};
+      const queryHistory = options => queries.getRoomHistory({...historyOptions, ...options});
+      // 块：base 帧是完整快照，其余帧默认空差异，edits 是 {tick: 差异}
+      const makeHistoryChunk = (base, full, edits = {}) => {
+        const ticks = {[base]: full};
+        for (let tick = base + 1; tick < base + HISTORY_CHUNK; tick += 1) ticks[tick] = edits[tick] ?? {};
+        return {timestamp: 1_700_000_000_000, room: 'E49N32', base, ticks};
+      };
+      const tick = 77_949_750;
+      const base = chunkBase(tick);
+      const snapshot = {
+        c1: {_id: 'c1', type: 'creep', name: 'worker', user: 'uA', x: 1, y: 1, hits: 100},
+        c2: {_id: 'c2', type: 'creep', name: 'hauler', user: 'uA', x: 2, y: 2, hits: 100},
+        c3: {_id: 'c3', type: 'creep', name: 'raider', user: '2', x: 3, y: 3, hits: 100},
+        c4: {_id: 'c4', type: 'creep', name: 'keeper', user: '3', x: 4, y: 4, hits: 100},
+        c5: {_id: 'c5', type: 'creep', name: 'ghost', user: 'uB', x: 5, y: 5, hits: 100},
+        c6: {_id: 'c6', type: 'creep', name: 'broken', user: 'uC', x: 6, y: 6, hits: 100},
+        s1: {_id: 's1', type: 'source', x: 7, y: 7, energy: 3000},
+      };
+      // 回包里 user 只是 id；userFindById 的回包带 steam 等不该出现在输出里的字段
+      const profiles = {
+        uA: {ok: 1, user: {_id: 'uA', username: 'alice', badge: {type: 1}, steam: {id: 'steam-secret'}}},
+        uB: {ok: 1, user: {error: 'user not found'}},
+      };
+      const historyCalls = [];
+      const findCalls = [];
+      let inFlight = 0;
+      let maxInFlight = 0;
+      let chunkFor = b => makeHistoryChunk(b, snapshot, b === base ? {[tick]: {c1: {x: 9}}, [tick + 1]: {c1: {x: 10}}} : {});
+      const historyApi = {
+        history: async (room, chunk, shard) => {
+          historyCalls.push({room, base: chunk, shard});
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          await new Promise(resolve => setImmediate(resolve));
+          inFlight -= 1;
+          return chunkFor(chunk);
+        },
+        userFindById: async id => {
+          findCalls.push(id);
+          if (id === 'uC') throw new Error('boom');
+          return profiles[id];
+        },
+      };
+      client.context = mockContext(historyApi);
+
+      // 状态模式：只取 tick 所在那一块（按 base 请求），返回和 room --objects 同形状的对象数组，带 username。
+      for (const given of [tick, String(tick)]) {
+        historyCalls.length = 0;
+        findCalls.length = 0;
+        const objects = await queryHistory({tick: given});
+        assert.deepEqual(historyCalls, [{room: 'E49N32', base, shard: 'shardX'}]);
+        assert.ok(Array.isArray(objects));
+        assert.equal(objects.length, Object.keys(snapshot).length);
+        const byId = id => objects.find(item => item._id === id);
+        assert.equal(byId('c1').x, 9); // tick 当帧的差异已经应用，后一帧的不算
+        assert.equal(byId('c1').username, 'alice');
+        assert.equal(byId('c2').username, 'alice');
+        assert.equal(byId('c3').username, 'Invader');
+        assert.equal(byId('c4').username, 'Source Keeper');
+        for (const id of ['c5', 'c6', 's1']) assert.equal('username' in byId(id), false, id); // 查不到、查询失败、无主
+        assert.deepEqual(findCalls.sort(), ['uA', 'uB', 'uC']); // 特殊 id 不查，每个 id 只查一次
+        assert.doesNotMatch(JSON.stringify(objects), /steam/);
+      }
+
+      // 范围模式：跨块时顺序取两块；记录带 username，跨块那一格只有真正的变化。
+      const next = base + HISTORY_CHUNK;
+      const moved = {...snapshot, c1: {...snapshot.c1, x: 20}, c3: {...snapshot.c3, x: 33}};
+      delete moved.c2;
+      chunkFor = b => (b === next ? makeHistoryChunk(b, moved, {[next + 1]: {c1: {x: 21}}}) : makeHistoryChunk(b, snapshot));
+      historyCalls.length = 0;
+      findCalls.length = 0;
+      maxInFlight = 0;
+      const records = await queryHistory({tick: next - 1, to: next + 1});
+      assert.deepEqual(historyCalls.map(call => call.base), [base, next]);
+      assert.equal(maxInFlight, 1);
+      assert.deepEqual(records.map(item => [item.tick - next, item.op, item.id, item.username]), [
+        [0, 'removed', 'c2', 'alice'],
+        [0, 'changed', 'c1', 'alice'],
+        [0, 'changed', 'c3', 'Invader'],
+        [1, 'changed', 'c1', 'alice'],
+      ]);
+      assert.deepEqual(records[1].changes, {x: 20});
+      assert.equal(records[1].x, 20);
+      assert.equal(records[0].name, 'hauler');
+      assert.deepEqual(findCalls.sort(), ['uA']);
+      assert.doesNotMatch(JSON.stringify(records), /steam/);
+      // 数组直接给 --filter / --fields 用，不需要 --pick
+      assert.deepEqual(applyOutputOptions(records, {filter: 'op=changed,username=alice', fields: 'tick,id,x'}), [
+        {tick: next, id: 'c1', x: 20},
+        {tick: next + 1, id: 'c1', x: 21},
+      ]);
+
+      // 最大跨度：1000 tick 跨 11 块，逐块顺序请求
+      chunkFor = b => makeHistoryChunk(b, snapshot);
+      historyCalls.length = 0;
+      const to = base + 50 + queries.HISTORY_MAX_SPAN;
+      assert.deepEqual(await queryHistory({tick: base + 50, to}), []);
+      assert.deepEqual(historyCalls.map(call => call.base), Array.from({length: (chunkBase(to) - base) / HISTORY_CHUNK + 1}, (_, index) => base + index * HISTORY_CHUNK));
+
+      // 直接取块：参数按 (room, base, shard) 传给 api.history
+      historyCalls.length = 0;
+      assert.equal((await queries.fetchHistoryChunk(historyApi, {room: 'E49N32', shard: 'shardX', base, tick})).base, base);
+      assert.deepEqual(historyCalls, [{room: 'E49N32', base, shard: 'shardX'}]);
+
+      // resolveUsernames：去重去空，特殊 id 不发请求，只留字符串 username；单个失败（含同步抛错）不影响其它
+      findCalls.length = 0;
+      assert.deepEqual(await queries.resolveUsernames(historyApi, [undefined, null, '', 'uA', 'uA', '2', '3', 'uB', 'uC']), {
+        uA: {username: 'alice'},
+        2: {username: 'Invader'},
+        3: {username: 'Source Keeper'},
+      });
+      assert.deepEqual(findCalls.sort(), ['uA', 'uB', 'uC']);
+      assert.deepEqual(await queries.resolveUsernames(historyApi, []), {});
+      assert.deepEqual(await queries.resolveUsernames({userFindById: () => { throw new Error('sync'); }}, ['uA']), {});
+      assert.deepEqual(await queries.resolveUsernames({userFindById: async () => ({user: {username: 42}})}, ['uA']), {});
+
+      // 取不到时官方返回 404，响应里分不出原因：再读一次当前 tick 来分类。
+      const clockShards = [];
+      const clockAt = time => async shard => {
+        clockShards.push(shard);
+        return {ok: 1, time};
+      };
+      const notFound = () => Object.assign(new Error('Request failed with status code 404'), {status: 404});
+      const failingHistory = (error, gameTimeApi) => mockContext({history: async () => { throw error; }, gameTime: gameTimeApi});
+      const messageOf = async options => {
+        try {
+          await queryHistory(options);
+        } catch (error) {
+          return error.message;
+        }
+        throw new Error('应该报错');
+      };
+      const current = 77_949_738;
+
+      client.context = failingHistory(notFound(), clockAt(1_000));
+      assert.equal(await messageOf({tick: 5_050}), 'tick 5050 还没到（当前 tick 1000）');
+      assert.equal(clockShards.at(-1), 'shardX');
+      // 响应对象上带的状态码也认
+      client.context = failingHistory(Object.assign(new Error('x'), {response: {status: 404}}), clockAt(1_000));
+      assert.equal(await messageOf({tick: 5_050}), 'tick 5050 还没到（当前 tick 1000）');
+      // 当前正在进行的这一块还没写完，给出最新能查到的 tick
+      client.context = failingHistory(notFound(), clockAt(current));
+      assert.equal(
+        await messageOf({tick: 77_949_720}),
+        `tick 77949720 所在的回放块（77949700～77949799）还没写完；官方每 ${HISTORY_CHUNK} tick 写一块，现在最新能查到 tick ${chunkBase(current) - 1}`,
+      );
+      // 当前 tick 本身已经走过（只是这一块还没写完），下一个 tick 才算还没到
+      assert.match(await messageOf({tick: current}), /还没写完/);
+      assert.equal(await messageOf({tick: current + 1}), `tick ${current + 1} 还没到（当前 tick ${current}）`);
+      // 更早的块：已经过了保留期
+      const expired = /已经过了官方的保留期/;
+      const missing = /官方缺了这一块/;
+      const veryOld = await messageOf({tick: 77_000_050});
+      assert.match(veryOld, /^服务器没有 E49N32 的回放块 77000000～77000099：已经过了官方的保留期/);
+      assert.doesNotMatch(veryOld, missing);
+      // 保留期内缺块（活跃房间也偶尔整块 404）：比当前 tick 早 1000 左右，不能说成过了保留期
+      const absent = await messageOf({tick: 77_948_750});
+      assert.match(absent, /^服务器没有 E49N32 的回放块 77948700～77948799：房间那时不活跃，或官方缺了这一块/);
+      assert.doesNotMatch(absent, expired);
+      // 保留期的分界：块起点距当前 tick 恰好等于 HISTORY_RETENTION_TICKS 算保留期内，再多 1 个 tick 才算过了保留期
+      const edgeBase = 77_000_000;
+      client.context = failingHistory(notFound(), clockAt(edgeBase + queries.HISTORY_RETENTION_TICKS));
+      const atEdge = await messageOf({tick: edgeBase + 50});
+      assert.match(atEdge, missing);
+      assert.doesNotMatch(atEdge, expired);
+      client.context = failingHistory(notFound(), clockAt(edgeBase + queries.HISTORY_RETENTION_TICKS + 1));
+      const pastEdge = await messageOf({tick: edgeBase + 50});
+      assert.match(pastEdge, expired);
+      assert.doesNotMatch(pastEdge, missing);
+      client.context = failingHistory(notFound(), clockAt(current));
+      // 读不到当前 tick（失败、同步抛错、不是数字）：通用说明
+      const generic = '服务器没有 E49N32 的回放块 77949700～77949799（可能还没写完、已过保留期，或房间那时不活跃）';
+      for (const gameTimeApi of [
+        async () => { throw new Error('boom'); },
+        () => { throw new Error('shard must be defined'); },
+        async () => ({ok: 1, time: 'x'}),
+        async () => ({ok: 1}),
+      ]) {
+        client.context = failingHistory(notFound(), gameTimeApi);
+        assert.equal(await messageOf({tick: 77_949_720}), generic);
+      }
+      // 范围里后面的块 404：报的是那一块，tick 取这一块里用户要的那一个（不早于块起点）
+      client.context = mockContext({
+        history: async (room, b) => {
+          if (b >= 77_949_800) throw notFound();
+          return makeHistoryChunk(b, snapshot);
+        },
+        gameTime: clockAt(77_949_850),
+      });
+      assert.equal(
+        await messageOf({tick: 77_949_790, to: 77_949_820}),
+        `tick 77949800 所在的回放块（77949800～77949899）还没写完；官方每 ${HISTORY_CHUNK} tick 写一块，现在最新能查到 tick 77949799`,
+      );
+
+      // 其它错误原样抛出，不读当前 tick，也不改写
+      const clockReads = clockShards.length;
+      for (const failure of [
+        Object.assign(new Error('Request failed with status code 500'), {status: 500}),
+        new Error('boom'),
+        Object.assign(new Error('rate limited'), {response: {status: 429}}),
+      ]) {
+        client.context = failingHistory(failure, clockAt(current));
+        await assert.rejects(() => queryHistory({tick: 77_949_720}), error => error === failure);
+      }
+      assert.equal(clockShards.length, clockReads);
+
+      // 参数不对：联网（取 context）之前就报错
+      let contexts = 0;
+      const inner = mockContext(historyApi);
+      client.context = async options => {
+        contexts += 1;
+        return inner(options);
+      };
+      const reject = async (options, expected) => {
+        await assert.rejects(() => queries.getRoomHistory(options), error => (typeof expected === 'string' ? error.message === expected : expected.test(error.message)), JSON.stringify(options));
+      };
+      await reject({target: 'main', shard: 'shardX', tick}, 'history 查询需要 room');
+      await reject({...historyOptions}, 'history 需要 --tick <tick>（房间回放）；房间统计请用 overview <房间>');
+      await reject({...historyOptions, to: tick + 5}, /^history 需要 --tick/);
+      for (const bad of ['abc', '-1', '1.5', '', -3, 2.5, NaN]) await reject({...historyOptions, tick: bad}, `--tick 必须是非负整数，收到：${bad}`);
+      for (const bad of ['x', '-1', 2.5, '']) await reject({...historyOptions, tick, to: bad}, `--to 必须是非负整数，收到：${bad}`);
+      await reject({...historyOptions, tick, to: tick}, `--to 必须大于 --tick（收到 --tick ${tick} --to ${tick}）`);
+      await reject({...historyOptions, tick, to: tick - 5}, `--to 必须大于 --tick（收到 --tick ${tick} --to ${tick - 5}）`);
+      const span = queries.HISTORY_MAX_SPAN + 1;
+      await reject({...historyOptions, tick, to: tick + span}, `--tick 到 --to 最多相隔 ${queries.HISTORY_MAX_SPAN} tick（收到 ${span}）；缩小范围，或分段查询`);
+      assert.equal(contexts, 0);
+      // 恰好是最大跨度的合法请求才会联网
+      assert.deepEqual(await queryHistory({tick, to: tick + queries.HISTORY_MAX_SPAN}), []);
+      assert.equal(contexts, 1);
     }
     client.context = mockContext();
   } finally {

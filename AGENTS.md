@@ -165,7 +165,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
   - 排查、评估和 review 默认只执行只读操作；用户明确要求执行普通游戏操作时，可以根据已确认的目标和 bot API 构造并执行相应 Console 表达式
   - 重生、放弃房间等不可逆游戏操作，执行前必须明确告知影响
   - **bot 正式部署只能走 GitHub Actions，禁止直接 API 提交代码**
-- **探针：** 线上排查先用内置命令（`room --objects`、`memory` 加 `--filter` / `--fields`、`overview`），读 bot 运行时状态才写 console 探针；探针放 `probes/`（不入库），不要放仓库根目录。
+- **探针：** 线上排查先用内置命令（`room --objects`、`memory` 加 `--filter` / `--fields`、`overview`、`history`），读 bot 运行时状态才写 console 探针；探针放 `probes/`（不入库），不要放仓库根目录。
 
 每次处理任务时，优先读取本目录及相关子目录的 `AGENTS.md`，再根据需要查询 Screeps API 和游戏状态。不要把本仓库当成 bot 设计仓库或旁路发布通道。
 
@@ -195,6 +195,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
    | `userRooms` | `rooms` |
    | `gameRoomObjects` | `room <房间> --objects`（摘要用 `room <房间>`） |
    | `gameRoomOverview` | `overview <房间>` |
+   | `history`（房间回放） | `history <房间> --tick <tick> [--to <tick>]` |
    | `userMemoryGet` | `memory <路径>` |
    | `userMemorySegmentGet` | `segment --id <id>` |
    | `userCodeGet` | `code` |
@@ -209,10 +210,12 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
    npx --no-install screeps-api call <method> ...
    ```
 
-   常用的未封装只读方法：市场 `gameMarketOrdersIndex`、`gameMarketOrders`、`gameMarketStats`、`userMoneyHistory`；地图 `gameMapStats`、`gameRoomTerrain`、`gameRoomDecorations`；消息 `userMessagesList`；历史与实验数据 `history`（房间回放）、`experimentalPvp`、`experimentalNukes`、`warpathBattles`。
+   常用的未封装只读方法：市场 `gameMarketOrdersIndex`、`gameMarketOrders`、`gameMarketStats`、`userMoneyHistory`；地图 `gameMapStats`、`gameRoomTerrain`、`gameRoomDecorations`；消息 `userMessagesList`；实验数据 `experimentalPvp`、`experimentalNukes`、`warpathBattles`。
 
    上游 CLI 要在本仓库目录下运行才能找到 `.screeps.yml`，用 `--server <名字>` 选服务器块（默认 `main`），只用服务器块自身的 token，不认本工具的 `accounts` 和目标覆盖字段。房间和 shard 应显式传入。`gameMapStats` 的 `rooms` 是逗号分隔的房间名列表，`stat` 另外支持 `owner0` 和 `claim0`；`resource` 使用 `screeps-api` 的 `MarketResources` 值；PVP/Warpath 接口的 interval 是独立的 tick 参数。完整命令以 `npx --no-install screeps-api --help` 为准。
 
 上游 CLI 也暴露写入接口。Agent 只能用它的只读方法；禁止经上游 CLI 调用代码提交、Memory/Segment 写入、`userConsole`、建筑/旗帜/Intent、重生/放弃房间、市场写入、消息发送/标记已读或装饰修改等副作用 API。游戏内表达式一律走本工具的 `console` 命令（带请求 ID 匹配和同 ID 去重），不要用上游的 `userConsole`。正式 bot 部署仍只能走 GitHub Actions。
 
 官方房间统计用 `overview <房间>` 查询，字段含义见 [`docs/api/screeps-api.md`](./docs/api/screeps-api.md) 的「官方房间统计」。统计只能说明官方记录的区间数据，不能直接替代完整的房间实时 Energy 收支。
+
+通知、报错或 console 日志只给了一个 tick、想看那一刻房间里发生了什么，用 `history <房间> --tick <tick> [--to <tick>]`（官方房间回放，任意房间可查，约 19 天内）；tick 标签的含义、取不到时的几种原因见 [`docs/api/screeps-api.md`](./docs/api/screeps-api.md) 的「官方房间回放」。
