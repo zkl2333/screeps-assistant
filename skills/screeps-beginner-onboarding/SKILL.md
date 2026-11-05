@@ -1,6 +1,6 @@
 ---
 name: screeps-beginner-onboarding
-description: 带领新手完成Screeps官方教程并核查真实游戏状态。
+description: 带领新手完成 Screeps 官方教程并核查真实游戏状态。
 version: 0.1.0
 author: zkl2333, Hermes Agent
 license: MIT

@@ -10,7 +10,7 @@ const MAX_RESULT_CHARS = 25000;
 const targetSchema = z.string().default('main').describe('目标服务器：main、ptr、season、pserver，或 .screeps.yml 里定义的其他服务器');
 const shardSchema = z.string().optional().describe('分片名，例如 shardX；省略时使用该服务器默认分片');
 const accountSchema = z.string().optional().describe('本地 .screeps.yml 中的账号别名');
-const roomSchema = z.string().regex(/^[EW]\d+[NS]\d+$/, '房间名格式应为 E49N32 或 W1S2').describe('Screeps 房间名');
+const roomSchema = z.string().regex(/^[EW]\d+[NS]\d+$/, '房间名格式应为 E1N1 或 W1S2').describe('Screeps 房间名');
 
 function options(input) {
   return {target: input.target, shard: input.shard, account: input.account};
@@ -87,7 +87,7 @@ function createServer() {
 
   server.registerTool('screeps_get_memory', {
     description: '按路径读取 Screeps Memory；必须指定非空路径，避免意外读取整个 Memory。',
-    inputSchema: z.object({target: targetSchema, shard: shardSchema, account: accountSchema, path: z.string().min(1).describe('Memory 路径，例如 rooms.E49N32')}).strict(),
+    inputSchema: z.object({target: targetSchema, shard: shardSchema, account: accountSchema, path: z.string().min(1).describe('Memory 路径，例如 rooms.W1N1')}).strict(),
     annotations: {readOnlyHint: true, destructiveHint: false},
   }, input => call(() => queries.getMemory({...options(input), path: input.path})));
 

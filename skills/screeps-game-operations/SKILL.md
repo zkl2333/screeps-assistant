@@ -1,6 +1,6 @@
 ---
 name: screeps-game-operations
-description: Use when核查Screeps市场、Terminal和资源可达性。
+description: 核查 Screeps 市场、Terminal 与资源可达性时使用。
 ---
 
 # Screeps 游戏规则与外部核查
@@ -72,7 +72,7 @@ description: Use when核查Screeps市场、Terminal和资源可达性。
 
 ## 四、核查顺序
 
-目标环境必须显式使用 `shard2`；不要依赖 CLI 默认 shard。命令在 screeps-assistant 仓库目录下运行；本仓库没封装的只读端点（资金流水、市场行情）用上游 `npx --no-install screeps-api call` 兜底。
+必须显式指定 `--shard`，不要依赖 CLI 默认值（下例用 `shard2`）。命令在 screeps-assistant 仓库目录下运行；本仓库没封装的只读端点（资金流水、市场行情）用上游 `npx --no-install screeps-api call` 兜底。
 
 ### 1. 当前 Tick 与账户
 
@@ -101,8 +101,8 @@ npx --no-install screeps-api call userMoneyHistory
 ### 3. 房间实时结构与库存
 
 ```bash
-node bin/screeps-assistant.js room E42N24 --objects --target main --shard shard2
-node bin/screeps-assistant.js room E42N24 --objects --filter type=lab --fields _id,x,y,store,cooldown,actionLog --target main --shard shard2
+node bin/screeps-assistant.js room <room> --objects --target main --shard shard2
+node bin/screeps-assistant.js room <room> --objects --filter type=lab --fields _id,x,y,store,cooldown,actionLog --target main --shard shard2
 ```
 
 至少提取：
@@ -149,7 +149,7 @@ npx --no-install screeps-api call gameMarketStats O shard2
 
 - 默认只使用查询接口。
 - 市场成交、创建/取消订单、Console、Memory 写入都属于副作用操作，必须获得明确授权。
-- Bot 正式代码发布只能走 GitHub Actions，不通过外部 API 直推。
+- Bot 的代码发布走它自己的发布流程（如 CI），不通过外部 API 直推。
 - 不保存 Token、完整 Memory、订单 ID 或动态余额到 Skill。
 
 ## 相关资料

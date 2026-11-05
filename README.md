@@ -2,7 +2,7 @@
 
 Screeps 外部读取、游戏内表达式执行、实时连接、代码备份和数据分析工具。正式服、PTR、赛季服和私服使用同一套命令，通过目标配置隔离。
 
-同时提供本机 stdio MCP：Finch、Codex、zcode 和 Claude 可直接调用结构化工具；Grok Bot 使用同一 CLI，不需要远程 MCP 网关。
+同时提供本机 stdio MCP 服务：支持 MCP 的客户端（如 Claude、Codex）可直接调用结构化工具；不支持 MCP 的智能体平台直接调用同一套 CLI 即可，不需要远程 MCP 网关。
 
 ## 入口
 
@@ -14,18 +14,20 @@ Screeps 外部读取、游戏内表达式执行、实时连接、代码备份和
 
 ## 安装
 
+需要 Node.js（开发与测试使用 v24）。
+
 ```bash
 npm ci
 ```
 
 ## 目标与配置
 
-本地 `.screeps.yml` 保存凭据，已被 Git 忽略。`--target` 选择其中的服务器块，内置四个目标：
+本地 `.screeps.yml` 保存凭据，已被 Git 忽略；Token 在 Screeps 账户设置 → Auth Tokens 里生成，文件格式遵循 [SS3 统一凭据文件](https://github.com/screepers/screepers-standards/blob/master/SS3-Unified_Credentials_File.md)。`--target` 选择其中的服务器块，内置四个目标：
 
 | 目标 | 服务器 | 默认分片 | 可选分片 | 代码分支 |
 |---|---|---|---|---|
 | `main` | 正式服 | `shard2` | shard0～shard3、shardX | `main` |
-| `ptr` | PTR（正式服测试环境，经常 502，连得上时可用） | `shard2` | shard0～shard3 | `main` |
+| `ptr` | PTR（正式服测试环境；维护期间经常返回 502，需稍后重试） | `shard2` | shard0～shard3 | `main` |
 | `season` | 赛季服 | `shardSeason` | shardSeason | `default` |
 | `pserver` | 私服 | `shard0` | shard0 | `default` |
 
@@ -66,16 +68,16 @@ servers:
     url: https://screeps.com/
     token: "默认账号token"        # 不带 --account 时使用
     accounts:
-      yachiyo:                  # 用 --account yachiyo 选择
-        token: "yachiyo的token"
+      alt:                      # 用 --account alt 选择
+        token: "备用账号token"
 ```
 
 所有命令加 `--account <账号名>` 即切换到该账号；省略则用该服务器的默认账号：
 
 ```bash
 node bin/screeps-assistant.js account --target main                        # 默认账号
-node bin/screeps-assistant.js account --target main --account yachiyo      # Yachiyo
-node bin/screeps-assistant.js rooms --target main --shard shard2 --account yachiyo
+node bin/screeps-assistant.js account --target main --account alt          # 备用账号
+node bin/screeps-assistant.js rooms --target main --shard shard2 --account alt
 ```
 
 ## 查询命令
@@ -87,28 +89,28 @@ node bin/screeps-assistant.js shards --target main
 node bin/screeps-assistant.js rooms --target main --shard shardX
 
 # 房间摘要（房间名可写位置参数或 --room）
-node bin/screeps-assistant.js room E43N28 --target main --shard shard2
+node bin/screeps-assistant.js room W1N1 --target main --shard shard2
 
 # 房间全部对象：不需要视野，不占 console 额度
-node bin/screeps-assistant.js room E43N28 --objects --filter type=creep --fields name,x,y,hits,fatigue,username --target main --shard shard2
+node bin/screeps-assistant.js room W1N1 --objects --filter type=creep --fields name,x,y,hits,fatigue,username --target main --shard shard2
 
 # 官方房间统计
-node bin/screeps-assistant.js overview E43N28 --target main --shard shard2
-node bin/screeps-assistant.js overview E43N28 --interval 180 --stat creepsLost --target main --shard shard2
-node bin/screeps-assistant.js overview E43N28 --pick stats --fields total --compact --target main --shard shard2
-node bin/screeps-assistant.js overview E43N28 --tick 77950310 --target main --shard shard2
+node bin/screeps-assistant.js overview W1N1 --target main --shard shard2
+node bin/screeps-assistant.js overview W1N1 --interval 180 --stat creepsLost --target main --shard shard2
+node bin/screeps-assistant.js overview W1N1 --pick stats --fields total --compact --target main --shard shard2
+node bin/screeps-assistant.js overview W1N1 --tick 77950310 --target main --shard shard2
 
 # 房间回放（官方 room-history，任意房间可查）：某个 tick 的房间现场，或一段 tick 内每个对象的变化
-node bin/screeps-assistant.js history E43N28 --tick 77949750 --filter type=creep --fields name,username,x,y,hits --target main --shard shard2
-node bin/screeps-assistant.js history E43N28 --tick 77949750 --to 77949780 --filter type=creep --fields tick,op,name,x,y,changes --target main --shard shard2
+node bin/screeps-assistant.js history W1N1 --tick 77949750 --filter type=creep --fields name,username,x,y,hits --target main --shard shard2
+node bin/screeps-assistant.js history W1N1 --tick 77949750 --to 77949780 --filter type=creep --fields tick,op,name,x,y,changes --target main --shard shard2
 
 # 日志（订阅 console 事件流，只听不发表达式）：发布后盯 2 分钟有没有新报错 / 看某个模块在打什么 / 一行一条
 node bin/screeps-assistant.js logs --errors --duration 120 --target main --shard shard2
-node bin/screeps-assistant.js logs --duration 30 --grep 单位 --target main --shard shard2
+node bin/screeps-assistant.js logs --duration 30 --grep spawn --target main --shard shard2
 node bin/screeps-assistant.js logs --duration 20 --text --target main --shard shard2
 
 # Memory（路径可用位置参数或 --path；省略即查整个 Memory）与 Segment
-node bin/screeps-assistant.js memory rooms.E43N28 --target main --shard shard2
+node bin/screeps-assistant.js memory rooms.W1N1 --target main --shard shard2
 node bin/screeps-assistant.js segment --id 0,1 --target main --shard shard2
 
 # 代码模块、市场挂单、消息索引
@@ -120,10 +122,10 @@ node bin/screeps-assistant.js messages --target main
 node bin/screeps-assistant.js world --target season
 
 # 地图分析：单房间、范围扫描、ASCII 地形图、范围汇总
-node bin/screeps-assistant.js map --target season --room W2N39
-node bin/screeps-assistant.js map --target season --around E5S5 --radius 2
-node bin/screeps-assistant.js map --target main --shard shard2 --room E41N23 --ascii
-node bin/screeps-assistant.js map --target season --around E5S5 --radius 3 --summary-only
+node bin/screeps-assistant.js map --target season --room W1N1
+node bin/screeps-assistant.js map --target season --around W1N1 --radius 2
+node bin/screeps-assistant.js map --target main --shard shard2 --room W1N1 --ascii
+node bin/screeps-assistant.js map --target season --around W1N1 --radius 3 --summary-only
 ```
 
 `room` 摘要字段：`towers` / `spawns` / `labs` / `factories` 为房间内该类型建筑总数（含敌方）；`ownTowers` / `ownSpawns` / `ownLabs` / `ownFactories` 为己方数量；`storageEnergy` / `terminalEnergy` / `spawning` 仍只统计己方。
@@ -165,7 +167,7 @@ node bin/screeps-assistant.js map --target season --around E5S5 --radius 3 --sum
 node bin/screeps-assistant.js logs --errors --duration 120 --target main --shard shard2
 
 # 看某个模块在打什么
-node bin/screeps-assistant.js logs --duration 30 --grep 单位 --target main --shard shard2
+node bin/screeps-assistant.js logs --duration 30 --grep spawn --target main --shard shard2
 
 # 人读：一行一条，行首是 ~tick 分片
 node bin/screeps-assistant.js logs --duration 20 --text --target main --shard shard2
@@ -197,7 +199,7 @@ node bin/screeps-assistant.js logs --duration 15 --all-shards --fields shard,tex
 
 要点：
 
-- **只能往后听，没有历史。** 这个流只有实时数据，订阅之前打印的日志查不到。bot 平时很能说（2026-11-05 实测 25 秒收到 23 行），所以要靠 `--grep` / `--errors` / `--limit` 收窄；
+- **只能往后听，没有历史。** 这个流只有实时数据，订阅之前打印的日志查不到。活跃的 bot 每个 tick 都可能打印日志（实测 25 秒内收到 23 行），所以要靠 `--grep` / `--errors` / `--limit` 收窄；
 - **tick 是估算的。** 事件里没有 tick。工具在监听开始和结束时各读一次当前 tick（`gameTime`），日志行按到达时间在两者之间线性插值取整，误差约 ±1～2 tick，不依赖本机时钟与服务器同步。只有目标分片的行有 tick（锚点读的是目标分片，其它分片的行没有）；读不到当前 tick 时条目没有 `tick` 字段，监听结果不受影响，stderr 汇总里会提示；
 - **日志里的 tick 与 `history` 的对应关系**：日志 tick N 是 bot 运行时的 `Game.time = N`，它看到的现场是回放 tick `N-1`，它发出的意图的结果在回放 tick `N`。所以拿到一行日志的 tick，可以接 `history <房间> --tick <N-1>` 看 bot 当时看到的房间，用 `--tick <N>` 看它这一步的结果；
 - 表达式回包（`messages.results`）不属于 bot 日志，会被忽略；清理后为空的行会被跳过；一条日志内部的换行原样保留，所以 `--text` 下一个条目可能占多行。
@@ -219,7 +221,7 @@ node bin/screeps-assistant.js console --file - --target season < probe.js
 
 # heredoc 定界符加单引号，内容不经 shell 展开
 node bin/screeps-assistant.js console --file - --target main --shard shard2 <<'EOF'
-Object.values(Game.creeps).filter(c => c.memory.role === 'scout').map(c => c.name)
+Object.values(Game.creeps).filter(c => c.memory.role === 'harvester').map(c => c.name)
 EOF
 
 # 单次执行；默认等待 15s，最多发送 3 次（初次 + 2 次重试）
@@ -258,12 +260,12 @@ node bin/screeps-assistant.js console --file my-probe --target main --shard shar
 `--compact` 将 JSON 压缩为单行；默认仍为 2 空格缩进。`--pick <路径>` 先取结果的子路径，之后的 `--filter` / `--fields` 作用于取出的部分。`--filter` 支持 `路径=值`、`路径!=值` 和点号路径，多条件用逗号分隔且为“且”。`--fields` 对数组元素或对象条目保留指定路径，输出键名保留路径原文。
 
 ```bash
-node bin/screeps-assistant.js memory creeps --target season --filter role=scout --fields role,origin --compact
-node bin/screeps-assistant.js overview E43N28 --target main --shard shard2 --pick stats --fields total
-node bin/screeps-assistant.js room E43N28 --target main --shard shard2 --pick summary.hostileCreeps
+node bin/screeps-assistant.js memory creeps --target season --filter role=harvester --fields role,home --compact
+node bin/screeps-assistant.js overview W1N1 --target main --shard shard2 --pick stats --fields total
+node bin/screeps-assistant.js room W1N1 --target main --shard shard2 --pick summary.hostileCreeps
 ```
 
-`memory creeps` 返回的是「creep 名 → 该 creep 的 memory」对象集合，对象过滤会保留原键，所以 creep 名在键上。
+`memory creeps` 返回的是「creep 名 → 该 creep 的 memory」对象集合，对象过滤会保留原键，所以 creep 名在键上。示例里的 `role`、`home` 只是常见字段名，实际取决于你的 Bot 往 creep Memory 里写了什么。
 
 ## MCP
 
@@ -273,17 +275,17 @@ node bin/screeps-assistant.js room E43N28 --target main --shard shard2 --pick su
 node /path/to/screeps-assistant/src/mcp/server.mjs
 ```
 
-`.screeps.yml` 按仓库位置读取，不依赖启动目录。MCP 工具直接调用 API，不经过 shell，也不启动 CLI 子进程。第一版工具包括账号、Shard、房间、Memory、Segment 和通用 Console；Console 传入的是完整游戏内 JavaScript，默认不重试，超时表示执行结果未知。
+`.screeps.yml` 按仓库位置读取，不依赖启动目录。MCP 工具直接调用 API，不经过 shell，也不启动 CLI 子进程。目前提供 8 个工具：状态检查、账号、分片、己方房间列表、房间摘要、Memory、Segment 和通用 Console。CLI 里较新的 `room --objects`、`overview`、`history`、`logs` 等命令暂未提供 MCP 版本（见[路线图](docs/roadmap.md)）。Console 传入的是完整游戏内 JavaScript，默认不重试，超时表示执行结果未知。
 
-Grok Bot 在它的云端电脑中使用本 CLI。简单表达式可以用 `--expr`；复杂表达式使用 stdin：
+不支持 MCP、只能执行命令的智能体平台（例如云端沙箱里的 Agent）直接使用本 CLI。简单表达式可以用 `--expr`；复杂表达式使用 stdin：
 
 ```bash
 node bin/screeps-assistant.js console --file - --target main --shard shardX <<'EOF'
-Object.values(Game.creeps).filter(c => c.room.name === 'E49N32').map(c => c.name)
+Object.values(Game.creeps).filter(c => c.room.name === 'W1N1').map(c => c.name)
 EOF
 ```
 
-在 Grok Bot 中完成一次 CLI 工作流后，可让它保存为私有 Skill；不要假设复制一个通用 `SKILL.md` 文件就会被 Grok 自动发现。
+`skills/` 下的文件是 Skill 格式的参考；不同平台发现和加载 Skill 的方式不同，不要假设把 `SKILL.md` 复制过去就会被自动发现，请按各平台的要求安装。
 
 ## 工具目录
 
@@ -308,9 +310,7 @@ skills/                    Screeps 专用知识
 - **环境隔离**：只连 `.screeps.yml` 里配置的服务器，分片按目标的分片列表校验，凭据本地 `.screeps.yml` 不提交，多账号用 `--account` 显式切换；
 - **查询只读**：查询命令全部调用读取 API，不产生任何游戏副作用；
 - **console 透传**：`console` 命令执行用户显式输入的游戏内表达式并原样返回输出。表达式在服务器端 eval，能力等同官方游戏内控制台——是否写入由表达式决定，工具不代写、不审查；默认按同一请求 ID 自动重试，游戏内 `global.__sa` 会按 ID 缓存结果（100 tick 后清理），重复到达不会再次执行。仅当两次发送之间发生 global 重置（如发布新代码）时可能重复执行，写入类表达式建议 `--retry 0`；`--raw` 关闭包装与重试；
-- **无工具级写入**：不提供代码上传、市场交易、消息发送或标记已读、建筑/旗帜/Intent 创建、重生或放弃房间的命令；bot 正式代码发布只走 `screeps-bot` 的 GitHub Actions，本工具不是旁路发布通道。
-
-正式 Bot 代码只能通过 GitHub Actions 发布，不能从本项目旁路上传。
+- **无工具级写入**：不提供代码上传、市场交易、消息发送或标记已读、建筑/旗帜/Intent 创建、重生或放弃房间的命令；Bot 的代码发布请走它自己的发布流程（如 CI），本工具不是旁路发布通道。
 
 ## 验证
 

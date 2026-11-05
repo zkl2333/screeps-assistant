@@ -8,12 +8,14 @@
 
 | 想看什么 | 命令 |
 |---|---|
-| 房间现场：creep 位置/血量/疲劳、建筑存量、工地、墓碑 | `room E43N28 --objects --filter type=creep --fields name,x,y,hits,fatigue` |
-| 房间摘要：控制器、建筑计数、敌方 creep | `room E43N28` |
-| Memory 子树 | `memory rooms.E43N28` / `memory creeps --filter role=scout --fields role,origin` |
-| 某个 tick 房间里发生了什么（通知/报错只给了 tick） | `history E43N28 --tick <tick> [--to <tick>]`（`--to` 列出这段 tick 内每个对象的变化） |
-| 官方房间统计：采集、孵化、creep 损失 | `overview E43N28 --interval 180`；拿到 tick 想看那一刻：`overview E43N28 --tick 77950310`（自动选能覆盖它的最细一档） |
+| 房间现场：creep 位置/血量/疲劳、建筑存量、工地、墓碑 | `room W1N1 --objects --filter type=creep --fields name,x,y,hits,fatigue` |
+| 房间摘要：控制器、建筑计数、敌方 creep | `room W1N1` |
+| Memory 子树 | `memory rooms.W1N1` / `memory creeps --filter role=harvester --fields role,home` |
+| 某个 tick 房间里发生了什么（通知/报错只给了 tick） | `history W1N1 --tick <tick> [--to <tick>]`（`--to` 列出这段 tick 内每个对象的变化） |
+| 官方房间统计：采集、孵化、creep 损失 | `overview W1N1 --interval 180`；拿到 tick 想看那一刻：`overview W1N1 --tick 77950310`（自动选能覆盖它的最细一档） |
 | bot 现在在打什么 / 有没有新报错 | `logs --errors --duration 60`（只订阅 console 事件流，不发表达式；去掉 `--errors` 看全部，`--grep <关键词>` 看某个模块） |
+
+表中的 `role`、`home` 只是示例字段名，实际取决于你的 Bot 往 Memory 里写了什么。
 
 `room --objects` 读的是官方房间对象接口：不需要视野，也不占 console 额度（360 次/小时）。
 

@@ -1,6 +1,6 @@
 # Screeps API 已验证知识
 
-> 这里只保留本仓库读取工具依赖的 API 调用方式、字段含义和判断边界。bot 的设计、计划和验收记录统一放在 `screeps-bot/handbook/`。
+> 这里只保留本仓库读取工具依赖的 API 调用方式、字段含义和判断边界。某个 Bot 的设计、计划和验收记录不在这里记录。
 
 ## 记录规则
 
@@ -90,10 +90,10 @@
 ## 官方房间统计
 
 - **状态：** `verified`
-- **验证日期：** 2026-11-05（正式服 shard2，E43N28，三档 interval 各取一次）
+- **验证日期：** 2026-11-05（正式服 shard2，一个己方房间，三档 interval 各取一次）
 - **客户端方法：** `api.gameRoomOverview(room, interval, shard)`
 - **端点：** `GET /api/game/room-overview`
-- **命令：** `node bin/screeps-assistant.js overview E43N28 --interval 8 --target main --shard shard2`
+- **命令：** `node bin/screeps-assistant.js overview W1N1 --interval 8 --target main --shard shard2`
 - `interval` 是每格分钟数，只有三档：`8` 返回 8 格（约 64 分钟），`180` 返回 8 格（约 24 小时），`1440` 实测返回 7 格（按天）。
 - 返回 `stats`（时间序列）、`totals`（区间总计）和 `statsMax`。`statsMax` 的键形如 `energy8`、`creepsProduced180`，同一 interval 下各能量项的值相同，不是本房间的区间最大值；`overview` 不输出它。
 - 时间序列的 `endTime` 不是游戏 tick，也不是直接的 Unix 时间戳，而是以 `interval` 分钟为单位的 Unix 时间格号：`endTime × interval × 60000` 就是这一格结束时刻的 Unix 毫秒。相邻两格差 1；最后一格通常还没结束（结束时刻在当前时间之后），数值仍在累积。`overview` 命令已换算成带时区的本地时间，并给进行中的格子标 `inProgress`。
@@ -108,24 +108,24 @@
 ## 官方房间回放（room-history）
 
 - **状态：** `verified`
-- **验证日期：** 2026-11-05（正式服 shard2，E43N28 等己方房间，只读）
+- **验证日期：** 2026-11-05（正式服 shard2，己方房间，只读）
 - **客户端方法：** `api.history(room, tick, shard)`（`ScreepsHttpClient`）
 - **端点：** `GET /room-history/{shard}/{room}/{tick}.json`（路径不在 `/api` 下）
-- **命令：** `node bin/screeps-assistant.js history E43N28 --tick 77949750 [--to 77949780] --target main --shard shard2`
+- **命令：** `node bin/screeps-assistant.js history W1N1 --tick 77949750 [--to 77949780] --target main --shard shard2`
 - `tick` 会向下取整到 100 的倍数，一块覆盖 100 个 tick。**任意房间都有回放**（己方、别人的、没视野的都行），只是**不活跃的房间不记录**。
-- 回包 `{timestamp, room, base, ticks}`：`timestamp` 是这一块写入的 Unix 毫秒（比块结束晚几十秒）；`ticks` 是以 tick 为键的对象。`ticks[base]` 是**完整快照**（`{[_id]: 对象}`，E43N28 约 360 个对象，不含旗子），之后每个 tick 是**相对上一 tick 的差异**。**每块自己独立**：只取一块就能还原块内任意 tick。块内的 tick 从 `base` 起连续，遇到第一个没记录的 tick 就断，所以可能不足 100 帧。
+- 回包 `{timestamp, room, base, ticks}`：`timestamp` 是这一块写入的 Unix 毫秒（比块结束晚几十秒）；`ticks` 是以 tick 为键的对象。`ticks[base]` 是**完整快照**（`{[_id]: 对象}`，一个典型的己方房间约 360 个对象，不含旗子），之后每个 tick 是**相对上一 tick 的差异**。**每块自己独立**：只取一块就能还原块内任意 tick。块内的 tick 从 `base` 起连续，遇到第一个没记录的 tick 就断，所以可能不足 100 帧。
 - 差异格式（与引擎 `getDiff` 一致，已核对源码）：
   - `diff[id] === null`：这个对象消失了；`id` 在上一帧不存在：`diff[id]` 是完整的新对象；
   - 否则 `diff[id]` 只含变化的键：值为 `null` 表示这个键被删了或变成 null（分不开）；标量或类型变化给新值；
   - 值是对象或数组的键只做**一层**子差异：`store: {energy: 50}` 只列变化的子键，子键的值是整个新值；**数组的子差异是以下标为键的对象**（如 creep 的 `body: {"3": {"type":"move","hits":0}}`），不是数组；
   - 子键被删除时引擎写的是 `undefined`，JSON 序列化会丢掉，所以回放里**看不到“子键被删”**（实测 `store` 里值为 0 的资源键会一直保留，实际几乎碰不到）；
   - 回放不含旗子；creep 的 `_actionLog`、`_ticksToLive` 和私有的 `say` 已被去掉，其它内部字段仍在（creep 的 `_fatigue`、`_oldFatigue`，tower、link、lab、factory 的 `_actionLog`，spawn、extension 的 `_off`），变化记录里会出现。
-- **tick 标签的含义**：`ticks[N]` 是引擎处理完第 N 个 tick 后的房间现场，也就是 bot 在 `Game.time = N+1` 时看到的状态；bot 在 `Game.time = N` 发出的意图，结果就在 `ticks[N]`。本 tick 新生成的对象（刚孵出的 creep、墓碑）要晚一帧才出现，死掉的 creep 在 `ticks[N]` 已经没了。实测两次：墓碑 `deathTime = 77949718` 在 `ticks[77949719]` 才出现、creep 在 `ticks[77949718]` 就消失；墓碑 `deathTime = 77954062` 在 `ticks[77954063]` 才出现（2026-11-05，shard2，E43N28）。
+- **tick 标签的含义**：`ticks[N]` 是引擎处理完第 N 个 tick 后的房间现场，也就是 bot 在 `Game.time = N+1` 时看到的状态；bot 在 `Game.time = N` 发出的意图，结果就在 `ticks[N]`。本 tick 新生成的对象（刚孵出的 creep、墓碑）要晚一帧才出现，死掉的 creep 在 `ticks[N]` 已经没了。实测两次：墓碑 `deathTime = 77949718` 在 `ticks[77949719]` 才出现、creep 在 `ticks[77949718]` 就消失；墓碑 `deathTime = 77954062` 在 `ticks[77954063]` 才出现（2026-11-05，shard2）。
 - **取不到时是 HTTP 404**：错误对象是 `ScreepsApiError`，状态码在 `error.status`（`error.response` 是 undefined），`message` 是 `Request failed with status code 404`，`error.data` 是 nginx 的 HTML。404 有三种可能，响应里分不出来：① 这一块还没写完——**当前正在进行的那一块查不到**，最新只能查到上一块（实测 `gameTime = 77949738` 时 `77949700` 块 404、`77949600` 块可用）；② 过了保留期；③ 房间那时不活跃。分类要再读一次 `api.gameTime(shard)` 对照当前 tick。工具按约 30 万 tick 粗分：块起点比当前 tick 早得更多的报“已经过了官方的保留期”，保留期内的报“房间不活跃或官方缺块”（保留期内的活跃房间也偶尔整块 404）。
 - **保留期**约 19 天：2026-11-05 08:07（UTC）实测，tick 77655500 的块（写入时间 2026-10-17 04:09 UTC，距当时的 tick 约 30 万）还在，tick 77650000 的块已经 404（中间的块没有逐个探）。按 tick 数算只是约数，实际应按写入时间过期。
-- **块里可能有 `null` 占位帧，也可能整块缺失**（2026-11-05 在 E43N28 上扫描 44 个连续块的实测，不是统计规律）：绝大多数块是“第一帧完整快照 + 99 帧差异”，但 3 块形如“前 98 或 99 帧的值是 `null`，只有最后一两帧有数据”（有数据的第一帧是完整快照，推测是官方写入中断后补写的块），另有 4 块整块 404（在保留期内，房间也是活跃的）。`null` 帧是“没有记录”，不能当成空差异，更不能当成“所有对象消失”。
+- **块里可能有 `null` 占位帧，也可能整块缺失**（2026-11-05 在一个己方房间上扫描 44 个连续块的实测，不是统计规律）：绝大多数块是“第一帧完整快照 + 99 帧差异”，但 3 块形如“前 98 或 99 帧的值是 `null`，只有最后一两帧有数据”（有数据的第一帧是完整快照，推测是官方写入中断后补写的块），另有 4 块整块 404（在保留期内，房间也是活跃的）。`null` 帧是“没有记录”，不能当成空差异，更不能当成“所有对象消失”。
 - 回放里的 `user` 只是 user id。`GET /api/user/find?id=` 即 `api.userFindById(id)` 能反查：返回 `{ok: 1, user: {_id, username, badge, gcl, power, steam}}`（**不要输出 `steam`**，只取 `username`）；id 不存在时返回 `{ok: 1, user: {error: '…'}}` 之类，要容错。特殊 id：`'2'` 是 `Invader`，`'3'` 是 `Source Keeper`（不是合法 ObjectId，别拿去查）。
-- 还原：取一块，`state = structuredClone(ticks[base])`，之后逐 tick 应用差异即得到任意 tick 的现场。跨块那一格没有差异可用（下一块的第一帧是快照），用上一块还原到最后一帧的状态和下一块的快照逐对象比出差异。引擎在差异里把“键被删”也写成 `null`，所以还原出来的状态会留着 `null`，而官方快照里直接没有这个键（实测如 creep 的 `_oldFatigue`）；比较时要把 `null` 和缺键当成同一回事，否则块边界会多出没发生过的变化。用这个方法对 E43N28 的 9 对相邻块实测，块边界那一格的变化条数（9～26）和块内相邻帧（平均约 20）同量级，没有累积漂移。
+- 还原：取一块，`state = structuredClone(ticks[base])`，之后逐 tick 应用差异即得到任意 tick 的现场。跨块那一格没有差异可用（下一块的第一帧是快照），用上一块还原到最后一帧的状态和下一块的快照逐对象比出差异。引擎在差异里把“键被删”也写成 `null`，所以还原出来的状态会留着 `null`，而官方快照里直接没有这个键（实测如 creep 的 `_oldFatigue`）；比较时要把 `null` 和缺键当成同一回事，否则块边界会多出没发生过的变化。用这个方法对一个己方房间的 9 对相邻块实测，块边界那一格的变化条数（9～26）和块内相邻帧（平均约 20）同量级，没有累积漂移。
 
 ## 官方 console 事件流（WebSocket）
 
@@ -134,13 +134,13 @@
 - **客户端方法：** `await api.socket.connect()` 后 `await api.socket.subscribe('console', cb)`；收尾用 `api.socket.unsubscribe('console', cb)` 和 `api.socket.disconnect()`。连接与清理的写法见 `src/api/console.js` 的 `openConsoleSession`：`api.socket.on('error', () => {})` 加 `api.socket.off('error', console.error)` 可以静默 socket 错误（screeps-api 默认把它用 `console.error` 整段打印）。
 - **命令：** `node bin/screeps-assistant.js logs --duration 30 --target main --shard shard2`（实现见 `src/api/logs.js`）
 - `cb(event)` 的 `event` 键是 `type`、`id`、`path`、`data`；`event.data` 的键是 `messages`、`shard`；脚本抛出未捕获异常时是 `error`（和 `shard`），见上面「Console 通道」。
-- `data.messages.log`：字符串数组，是 bot 这个 tick 打印的日志，**每条是带 HTML 的字符串**。例如 `[<font color="#ffffff">    主循环</font>]         Bucket： 9791`，或 `<font color="#ff8080">[<font color="#80ff80">      单位</font>]<font color="#80ff80">[<a href="#!/room/shard2/E44N28">E44N28</a>]</font> TRR_7m 本 Tick 消耗了 6.33 CP`。颜色是 `<font color>`，房间名是 `<a href="#!/room/{shard}/{room}">` 链接，bot 用空格给标签对齐，去标签后要保留这些空格。
+- `data.messages.log`：字符串数组，是 bot 这个 tick 打印的日志，**每条是带 HTML 的字符串**。形如 `[<font color="#ffffff">    Kernel</font>]         Bucket: 9791`，或 `<font color="#ff8080">[<font color="#80ff80">     Spawn</font>]<font color="#80ff80">[<a href="#!/room/shard2/W1N1">W1N1</a>]</font> spawned harvester_12`（示意，具体文案由各 Bot 自定）。颜色是 `<font color>`，房间名是 `<a href="#!/room/{shard}/{room}">` 链接，bot 用空格给标签对齐，去标签后要保留这些空格。
 - `data.messages.results`：表达式执行结果。本工具 `console` 命令的 `@@sa:` 协议回包走这里；`logs` 忽略它。
 - `data.shard`：这条事件属于哪个分片。**一条订阅里混着所有分片的日志**，不是只给 `--shard` 指定的那一个，要按 `data.shard` 过滤。
 - `data.error`：脚本抛出未捕获异常时的错误文本（`src/api/console.js` 的 `dispatch` 就是这么处理的），`logs` 把它当作一条 `error: true` 的记录。
 - **事件里没有 tick。** 只能按到达时间估算：监听开始和结束时各读一次 `api.gameTime(shard)`（`{ok, time}`，当前 tick），中间按到达时间线性插值取整。这种“两端锚点加实测斜率”的做法不依赖 `gameShardsInfo` 的平均 tick 时长，也不要求本机时钟与服务器同步；两端各有 ±0.5 tick 的取整误差，整体误差约 ±1～2 tick。锚点读的是目标分片的 tick，其它分片的日志算不出 tick。
 - `api.gameTime(shard)` 缺 shard 时是**同步 throw**，不返回 rejected promise；要统一按失败处理，得用 `async` 包一层（`const attempt = async call => call();`，`src/api/queries.js` 和 `src/api/logs.js` 都这么做）。
-- **只有实时数据，没有历史**：订阅之前打印的日志查不到。bot 平时很能说（实测 25 秒收到 23 行，含每单位 CPU 消耗、限流跳过等），需要过滤和上限。
+- **只有实时数据，没有历史**：订阅之前打印的日志查不到。活跃的 bot 每个 tick 都可能打印日志（实测 25 秒内收到 23 行），需要过滤和上限。
 - 订阅是 WebSocket 上的只读订阅，不调用 `POST /api/user/console`，所以不占那个 360 次/小时的发送额度。
 
 ## 上游 CLI

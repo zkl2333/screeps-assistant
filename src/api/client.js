@@ -81,7 +81,7 @@ function resolveTarget({target = 'main', shard} = {}, file = CONFIG_FILE) {
  *       url: https://screeps.com/
  *       token: "默认账号token"        # 不带 --account 时使用
  *       accounts:
- *         yachiyo: { token: "..." }  # --account yachiyo 时使用
+ *         alt: { token: "..." }  # --account alt 时使用
  *
  * account 省略 → 用服务器块自身的 token；给出 → 用 accounts[account].token。
  */

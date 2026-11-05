@@ -26,7 +26,7 @@ function options(args) {
 /** 房间名可写成位置参数或 --room。 */
 function roomArg(args, command) {
   const room = args.room || args._[0];
-  if (!room) throw new Error(`${command} 命令需要房间名：${command} E43N28 或 --room E43N28`);
+  if (!room) throw new Error(`${command} 命令需要房间名：${command} W1N1 或 --room W1N1`);
   return room;
 }
 

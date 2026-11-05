@@ -1,7 +1,7 @@
 // pull-code.js — 从 Screeps 拉取代码保存到本地（只读）
 //
 // 用法: node tools/backup/pull-code.js [branch] [outputDir] [--target main] [--account name]
-// 示例: node tools/backup/pull-code.js main ./dist --target main --account yachiyo
+// 示例: node tools/backup/pull-code.js main ./dist --target main --account alt
 
 'use strict';
 

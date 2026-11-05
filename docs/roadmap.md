@@ -23,7 +23,7 @@
 
 ### 2. `room` 摘要加深
 
-- **现状**：`room <房间>` 摘要里 creep 的 `role`、`squadName` 恒为空，因为房间对象本来就不带 Bot 自定义字段（它们在 Memory 里）；对“房间里现在什么样”的信息也偏少。
+- **现状**：`room <房间>` 摘要里 creep 的 `role`、`squadName` 恒为空，因为这两项是 Bot 写在 Memory 里的自定义字段，房间对象本身不带；对“房间里现在什么样”的信息也偏少。
 - **要做**：去掉恒为空的字段，或改成显式指定 Memory 路径来补；加 creep 剩余寿命（`ageTime` 减当前 tick）、建筑存量和血量概览、敌方 creep 的玩家名；`--ascii` 地图叠加结构和 creep。
 
 ### 3. `code verify --dist <文件>`

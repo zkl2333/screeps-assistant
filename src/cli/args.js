@@ -161,13 +161,13 @@ function helpText() {
   --filter <路径=值,...>   --fields <路径,...>   作用于数组或对象集合（有 --pick 时作用于取出的部分）
 
 房间回放（官方 room-history：任意房间都能查，不需要视野；约 19 天内、每 100 tick 一块，正在进行的这一块要等写完）：
-  node bin/screeps-assistant.js history E43N28 --tick 77949750 --filter type=creep --fields name,username,x,y,hits
-  node bin/screeps-assistant.js history E43N28 --tick 77949750 --to 77949780 --filter type=creep --fields tick,op,name,x,y,changes
+  node bin/screeps-assistant.js history W1N1 --tick 77949750 --filter type=creep --fields name,username,x,y,hits
+  node bin/screeps-assistant.js history W1N1 --tick 77949750 --to 77949780 --filter type=creep --fields tick,op,name,x,y,changes
 tick N 是处理完第 N 个 tick 后的现场（bot 在 Game.time=N+1 看到的状态）；本 tick 新生成的对象晚一帧出现。
 
 日志（logs：订阅 console 事件流，不发送任何表达式，不占 console 发送额度；查不到过去的日志）：
   node bin/screeps-assistant.js logs --errors --duration 120 --target main --shard shard2
-  node bin/screeps-assistant.js logs --duration 30 --grep 单位 --text --target main --shard shard2
+  node bin/screeps-assistant.js logs --duration 30 --grep spawn --text --target main --shard shard2
 tick 是按到达时间估算的（误差约 ±1～2 tick），只有目标分片的行才有；拿到 tick 可以接 history 看那一刻的房间。
 
 console 表达式三选一：位置参数、--expr、--file <路径或 probes/ 下的探针名>；--file - 读 stdin
