@@ -20,7 +20,7 @@ const {readWorld, scanRooms} = require('../src/map/query');
 const {terrainAscii} = require('../src/map/analysis');
 
 function options(args) {
-  return {target: args.target || 'main', shard: args.shard, account: args.account, codeBranch: args['code-branch']};
+  return {target: args.target || 'main', shard: args.shard, account: args.account, codeBranch: args.branch};
 }
 
 /** 房间名可写成位置参数或 --room。 */
