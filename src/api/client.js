@@ -7,24 +7,16 @@ const {ScreepsConfigManager, ScreepsHttpClient} = require('screeps-api');
 
 const CONFIG_FILE = path.join(__dirname, '..', '..', '.screeps.yml');
 
+const OFFICIAL_SHARDS = Object.freeze(['shard0', 'shard1', 'shard2', 'shard3', 'shardX']);
+
+/** 内置目标默认值；.screeps.yml 的同名服务器块可用 shards / defaultShard / codeBranch 覆盖。 */
 const TARGETS = Object.freeze({
-  main: Object.freeze({server: 'main', app: 'default', shards: ['shard0', 'shard1', 'shard2', 'shard3', 'shardX'], defaultShard: 'shard2', codeBranch: 'main'}),
-  season: Object.freeze({server: 'season', app: 'season11', shards: ['shardSeason'], defaultShard: 'shardSeason', codeBranch: 'default'}),
-  pserver: Object.freeze({server: 'pserver', app: 'pserver', shards: ['shard0'], defaultShard: 'shard0', codeBranch: 'default'}),
+  main: Object.freeze({server: 'main', app: 'default', shards: OFFICIAL_SHARDS, defaultShard: 'shard2', codeBranch: 'main'}),
+  // PTR 实测只有 shard0～shard3、没有 shardX（2026-11-05 gameShardsInfo）；bot 往 PTR 部署的也是 main 分支。
+  ptr: Object.freeze({server: 'ptr', app: 'ptr', shards: Object.freeze(['shard0', 'shard1', 'shard2', 'shard3']), defaultShard: 'shard2', codeBranch: 'main'}),
+  season: Object.freeze({server: 'season', app: 'season', shards: Object.freeze(['shardSeason']), defaultShard: 'shardSeason', codeBranch: 'default'}),
+  pserver: Object.freeze({server: 'pserver', app: 'pserver', shards: Object.freeze(['shard0']), defaultShard: 'shard0', codeBranch: 'default'}),
 });
-
-function targetConfig(target = 'main') {
-  const config = TARGETS[target];
-  if (!config) throw new Error(`不支持目标：${target}。可选：${Object.keys(TARGETS).join(', ')}`);
-  return config;
-}
-
-function resolveTarget({target = 'main', shard} = {}) {
-  const config = targetConfig(target);
-  const resolvedShard = shard || config.defaultShard;
-  if (!config.shards.includes(resolvedShard)) throw new Error(`${target} 不支持分片 ${resolvedShard}。可选：${config.shards.join(', ')}`);
-  return {target, config, shard: resolvedShard};
-}
 
 /** 读取并解析本地 .screeps.yml；不存在时报错提示。 */
 function loadRawConfig(file = CONFIG_FILE) {
@@ -32,6 +24,52 @@ function loadRawConfig(file = CONFIG_FILE) {
   const parsed = parse(fs.readFileSync(file, 'utf8'));
   if (!parsed || !parsed.servers) throw new Error(`配置缺少 servers 对象：${file}`);
   return parsed;
+}
+
+/** 配置文件不存在时返回 null，内置目标照常解析，缺凭据的报错留给连接阶段。 */
+function readServerBlocks(file = CONFIG_FILE) {
+  if (!fs.existsSync(file)) return null;
+  return loadRawConfig(file).servers;
+}
+
+function mergeTargetConfig(target, builtin, block = {}) {
+  const server = builtin?.server || target;
+  const where = `.screeps.yml 的 servers.${server}`;
+  if (block.shards !== undefined && !(Array.isArray(block.shards) && block.shards.length && block.shards.every(name => typeof name === 'string' && name))) {
+    throw new Error(`${where}.shards 必须是非空的分片名数组`);
+  }
+  for (const key of ['defaultShard', 'codeBranch']) {
+    if (block[key] !== undefined && !(typeof block[key] === 'string' && block[key])) throw new Error(`${where}.${key} 必须是非空字符串`);
+  }
+  const shards = block.shards || builtin?.shards || (block.defaultShard ? [block.defaultShard] : ['shard0']);
+  const defaultShard = block.defaultShard || (shards.includes(builtin?.defaultShard) ? builtin.defaultShard : shards[0]);
+  if (!shards.includes(defaultShard)) throw new Error(`${where}.defaultShard "${defaultShard}" 不在分片列表里：${shards.join(', ')}`);
+  return Object.freeze({
+    server,
+    app: builtin?.app || target,
+    shards: Object.freeze([...shards]),
+    defaultShard,
+    codeBranch: block.codeBranch || builtin?.codeBranch || 'default',
+  });
+}
+
+/** 目标 = 内置默认值 + .screeps.yml 同名服务器块的覆盖；yml 里新增的服务器块也能直接当目标用。 */
+function targetConfig(target = 'main', file = CONFIG_FILE) {
+  const builtin = TARGETS[target];
+  const servers = readServerBlocks(file);
+  const block = servers?.[builtin?.server || target];
+  if (!builtin && !block) {
+    const names = [...new Set([...Object.keys(TARGETS), ...Object.keys(servers || {})])];
+    throw new Error(`不支持目标：${target}。可选：${names.join(', ')}`);
+  }
+  return mergeTargetConfig(target, builtin, block || {});
+}
+
+function resolveTarget({target = 'main', shard} = {}, file = CONFIG_FILE) {
+  const config = targetConfig(target, file);
+  const resolvedShard = shard || config.defaultShard;
+  if (!config.shards.includes(resolvedShard)) throw new Error(`${target} 不支持分片 ${resolvedShard}。可选：${config.shards.join(', ')}`);
+  return {target, config, shard: resolvedShard};
 }
 
 /**
@@ -49,16 +87,17 @@ function loadRawConfig(file = CONFIG_FILE) {
  */
 function resolveServerConfig(target, account, file = CONFIG_FILE) {
   const parsed = loadRawConfig(file);
-  const serverBlock = parsed.servers[targetConfig(target).server];
+  const config = targetConfig(target, file);
+  const serverName = config.server;
+  const serverBlock = parsed.servers[serverName];
   if (!serverBlock) {
     const defined = Object.keys(parsed.servers).join(', ');
-    throw new Error(`配置里找不到服务器 "${targetConfig(target).server}"；已定义：${defined}`);
+    throw new Error(`配置里找不到服务器 "${serverName}"；已定义：${defined}`);
   }
 
   // 浅拷贝，避免污染原始配置；账号 token 覆盖默认 token。
   const merged = {...serverBlock};
   delete merged.accounts;
-  const serverName = targetConfig(target).server;
   const definedAccounts = Object.keys(serverBlock.accounts || {});
   if (account) {
     const accountBlock = serverBlock.accounts?.[account];
@@ -75,7 +114,7 @@ function resolveServerConfig(target, account, file = CONFIG_FILE) {
   }
 
   const manager = new ScreepsConfigManager();
-  return {server: manager.normalizeServerConfig(merged), app: {name: targetConfig(target).app}};
+  return {server: manager.normalizeServerConfig(merged), app: {name: config.app}};
 }
 
 async function openClient(target = 'main', account) {

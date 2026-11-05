@@ -4,14 +4,23 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const {TARGETS, gclProgress, objectSummary, resolveServerConfig, resolveTarget} = require('../src/api/client');
+const {gclProgress, objectSummary, resolveServerConfig, resolveTarget} = require('../src/api/client');
 
-assert.deepEqual(Object.keys(TARGETS), ['main', 'season', 'pserver']);
-assert.equal(resolveTarget({target: 'main'}).shard, 'shard2');
-assert.equal(resolveTarget({target: 'season'}).shard, 'shardSeason');
-assert.equal(resolveTarget({target: 'main', shard: 'shardX'}).shard, 'shardX');
-assert.throws(() => resolveTarget({target: 'season', shard: 'shard2'}), /不支持分片/);
-assert.throws(() => resolveTarget({target: 'unknown'}), /不支持目标/);
+// 内置目标不依赖本机 .screeps.yml：传一个不存在的配置路径。
+const NO_CONFIG = path.join(os.tmpdir(), `screeps-assistant-no-config-${process.pid}.yml`);
+assert.equal(resolveTarget({target: 'main'}, NO_CONFIG).shard, 'shard2');
+assert.equal(resolveTarget({target: 'season'}, NO_CONFIG).shard, 'shardSeason');
+assert.equal(resolveTarget({target: 'main', shard: 'shardX'}, NO_CONFIG).shard, 'shardX');
+assert.throws(() => resolveTarget({target: 'season', shard: 'shard2'}, NO_CONFIG), /不支持分片/);
+assert.throws(() => resolveTarget({target: 'unknown'}, NO_CONFIG), /不支持目标：unknown。可选：main, ptr, season, pserver/);
+
+// PTR 是正式服的测试环境：分片是正式服的子集，默认分片和代码分支与正式服一致。
+const mainTarget = resolveTarget({target: 'main'}, NO_CONFIG);
+const ptrTarget = resolveTarget({target: 'ptr'}, NO_CONFIG);
+assert.equal(ptrTarget.config.server, 'ptr');
+assert.ok(ptrTarget.config.shards.every(shard => mainTarget.config.shards.includes(shard)));
+assert.equal(ptrTarget.shard, mainTarget.shard);
+assert.equal(ptrTarget.config.codeBranch, mainTarget.config.codeBranch);
 
 // GCL 阶梯：常量来自 @screeps/common，数值本身由 package-lock 保证，此处只测公式逻辑，
 // 期望值用同一常量构造——等级边界在 GCL_MULTIPLY * n^GCL_POW 处，取整方向 floor，边界上 progress 归零。
@@ -121,6 +130,68 @@ try {
   assert.equal(resolveServerConfig('main', 'alt', accountsOnlyFile).server.token, 'alt-token');
 } finally {
   fs.unlinkSync(accountsOnlyFile);
+}
+
+// 服务器块可覆盖内置目标的分片、默认分片和代码分支；新赛季换分片不用改代码。
+const overrideFile = writeFixture(`
+servers:
+  season:
+    url: https://screeps.com/season/
+    token: "season-token"
+    shards: [shardSeason, shardNext]
+    defaultShard: shardNext
+    codeBranch: s12
+  main:
+    url: https://screeps.com/
+    token: "main-token"
+    codeBranch: experiment
+  staging:
+    url: http://127.0.0.1:21025/
+    token: "staging-token"
+    defaultShard: shardA
+`);
+
+try {
+  const season = resolveTarget({target: 'season'}, overrideFile);
+  assert.equal(season.shard, 'shardNext');
+  assert.equal(season.config.codeBranch, 's12');
+  assert.equal(resolveTarget({target: 'season', shard: 'shardSeason'}, overrideFile).shard, 'shardSeason');
+  assert.throws(() => resolveTarget({target: 'season', shard: 'shard2'}, overrideFile), /不支持分片 shard2/);
+
+  // 只覆盖一项时，其余沿用内置默认值。
+  const main = resolveTarget({target: 'main'}, overrideFile);
+  assert.equal(main.config.codeBranch, 'experiment');
+  assert.deepEqual(main.config.shards, resolveTarget({target: 'main'}, NO_CONFIG).config.shards);
+  assert.equal(main.shard, resolveTarget({target: 'main'}, NO_CONFIG).shard);
+
+  // yml 里新增的服务器块直接可用；只给 defaultShard 时分片列表就是它。
+  const staging = resolveTarget({target: 'staging'}, overrideFile);
+  assert.equal(staging.shard, 'shardA');
+  assert.deepEqual(staging.config.shards, ['shardA']);
+  assert.equal(resolveServerConfig('staging', undefined, overrideFile).server.token, 'staging-token');
+  assert.throws(() => resolveTarget({target: 'nowhere'}, overrideFile), /不支持目标：nowhere。可选：.*staging/);
+} finally {
+  fs.unlinkSync(overrideFile);
+}
+
+const badOverrideFile = writeFixture(`
+servers:
+  season:
+    url: https://screeps.com/season/
+    token: "season-token"
+    shards: [shardSeason]
+    defaultShard: shardOther
+  main:
+    url: https://screeps.com/
+    token: "main-token"
+    shards: shard2
+`);
+
+try {
+  assert.throws(() => resolveTarget({target: 'season'}, badOverrideFile), /defaultShard "shardOther" 不在分片列表里/);
+  assert.throws(() => resolveTarget({target: 'main'}, badOverrideFile), /shards 必须是非空的分片名数组/);
+} finally {
+  fs.unlinkSync(badOverrideFile);
 }
 
 console.log('客户端基础测试通过');

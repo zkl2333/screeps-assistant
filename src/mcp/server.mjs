@@ -7,7 +7,7 @@ import consoleProtocol from '../api/console-protocol.js';
 
 const MAX_RESULT_CHARS = 25000;
 
-const targetSchema = z.string().default('main').describe('目标服务器：main、season 或 pserver');
+const targetSchema = z.string().default('main').describe('目标服务器：main、ptr、season、pserver，或 .screeps.yml 里定义的其他服务器');
 const shardSchema = z.string().optional().describe('分片名，例如 shardX；省略时使用该服务器默认分片');
 const accountSchema = z.string().optional().describe('本地 .screeps.yml 中的账号别名');
 const roomSchema = z.string().regex(/^[EW]\d+[NS]\d+$/, '房间名格式应为 E49N32 或 W1S2').describe('Screeps 房间名');
