@@ -13,9 +13,18 @@
     "pull": "node tools/backup/pull-code.js",
     "test": "node tests/client.test.js && node tests/map.test.js && node tests/console-protocol.test.js && node tests/console-session.test.js && node tests/cli.test.js && node tests/replay.test.js && node tests/logs.test.js && node tests/queries.test.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "screeps",
+    "screeps-api",
+    "cli",
+    "mcp"
+  ],
+  "author": "zkl2333",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zkl2333/screeps-assistant.git"
+  },
   "type": "commonjs",
   "dependencies": {
     "@modelcontextprotocol/server": "^2.4.0",
