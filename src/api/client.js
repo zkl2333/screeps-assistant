@@ -194,8 +194,10 @@ function objectSummary(objects, userId) {
 
 async function readSummary(options = {}) {
   const {target, config, shard, api, account} = await context(options);
-  const [time, rooms, shards, code] = await Promise.all([api.gameTime(shard), api.userRooms(account._id, shard), api.gameShardsInfo(), api.userCodeGet(config.codeBranch)]);
-  return {target, server: config.server, app: config.app, shard, codeBranch: config.codeBranch, account: accountSummary(account), gameTime: time?.time, rooms: rooms?.shards?.[shard] || [], shardInfo: shards?.shards?.find(item => item.name === shard) || null, codeModules: Object.keys(code?.modules || {})};
+  // codeBranch 可用 --branch 覆盖（查 yachiyo 等小号的 default 分支时用）
+  const codeBranch = options.codeBranch || config.codeBranch;
+  const [time, rooms, shards, code] = await Promise.all([api.gameTime(shard), api.userRooms(account._id, shard), api.gameShardsInfo(), api.userCodeGet(codeBranch)]);
+  return {target, server: config.server, app: config.app, shard, codeBranch, account: accountSummary(account), gameTime: time?.time, rooms: rooms?.shards?.[shard] || [], shardInfo: shards?.shards?.find(item => item.name === shard) || null, codeModules: Object.keys(code?.modules || {})};
 }
 
 module.exports = {TARGETS, accountSummary, context, gclProgress, objectSummary, openClient, readSummary, resolveServerConfig, resolveTarget, targetConfig};
