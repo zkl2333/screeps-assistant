@@ -297,7 +297,7 @@ tools/backup/              线上代码只读备份
 tools/live/                WebSocket 和 CPU 采样
 probes/                    一次性 console 探针（不入库）
 tests/                     本地测试
-docs/                      API 和使用文档
+docs/                      API、使用文档和路线图（docs/roadmap.md）
 skills/                    Screeps 专用知识
 ```
 

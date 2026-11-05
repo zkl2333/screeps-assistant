@@ -8,6 +8,7 @@
 |---|---|
 | [`../README.md`](../README.md) | 工具用途、安装与命令入口 |
 | [`../AGENTS.md`](../AGENTS.md) | 凭证安全、能力边界和操作规则 |
+| [`roadmap.md`](./roadmap.md) | 本工具之后可能做的功能（建议顺序，未承诺排期） |
 | [`api/`](./api/) | 房间、Memory、Shard、WebSocket 等读取接口的用法和字段注意事项 |
 | [`game/`](./game/) | 不依赖 TI 或其他 Bot 实现的游戏机制、策略和实验结论 |
 | [`resources/`](./resources/) | 视频、文章和其他学习资料 |

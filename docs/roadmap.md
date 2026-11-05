@@ -1,0 +1,42 @@
+# 路线图
+
+记录 `screeps-assistant` 之后可能做的功能。顺序是建议顺序，不是排期承诺；条目开工前先和维护者确认。
+
+- **范围**：只收通用能力，也就是换成另一个 Bot 后仍然有用的查询、控制台和 MCP 功能（判断办法见 [`README.md`](./README.md) 里“判断归属”那一段）。依赖某个 Bot 的实现、需要改 Bot 仓库的事项不放这里。
+- **优先级**：功能性和易用性优先，目标是让内置命令直接回答常见现场问题，少写一次性探针。安全加固暂缓，不新增工具级的写入命令（见根目录 [`README.md`](../README.md) 的「安全边界」）。
+
+## 已完成（2026-11-05）
+
+- `ptr` 目标，以及在 `.screeps.yml` 的服务器块里覆盖 `shards` / `defaultShard` / `codeBranch`；
+- `room --objects`（原样对象，带 `username`）、通用 `--pick`、`probes/` 目录与 `--file <探针名>` 查找；
+- `overview`：官方房间统计，每格带估算的 tick 范围，`--tick` 选格；
+- `history`：官方房间回放，`--tick` 还原某个 tick 的房间现场，`--to` 列出一段 tick 内每个对象的变化；
+- `logs`：订阅 console 事件流听 bot 的日志，去 HTML、按分片和关键词过滤，每行附估算 tick。
+
+## 待做
+
+### 1. 分块上传长表达式与 `--arg` 传参
+
+- **现状**：console 表达式整条上限 1000 字节，包装占约 320 字节，实际只剩约 680 字节。稍复杂的探针只能精简或拆文件；探针里的房间名、阈值要改文件重跑。
+- **要做**：`--arg 名=值`（可重复；值按 JSON 解析，不行就当字符串）把参数注入表达式作用域，同一个探针文件可以复用。超过上限的表达式分块上传到 bot 的 `global`，拼接后执行。
+- **注意**：分块每块占一次 console 发送额度（360 次/小时），还要处理半途失败，需要完整性校验和清理。建议先做 `--arg`，分块视需要再做。
+
+### 2. `room` 摘要加深
+
+- **现状**：`room <房间>` 摘要里 creep 的 `role`、`squadName` 恒为空，因为房间对象本来就不带 Bot 自定义字段（它们在 Memory 里）；对“房间里现在什么样”的信息也偏少。
+- **要做**：去掉恒为空的字段，或改成显式指定 Memory 路径来补；加 creep 剩余寿命（`ageTime` 减当前 tick）、建筑存量和血量概览、敌方 creep 的玩家名；`--ascii` 地图叠加结构和 creep。
+
+### 3. `code verify --dist <文件>`
+
+- **现状**：`code` 只能列出线上模块名，没法确认线上跑的就是本地这份构建。
+- **要做**：读线上模块内容，和本地构建产物比对（长度加哈希），输出一致或不一致及差异概要。只读，不写线上。
+
+### 4. MCP 补齐
+
+- **现状**：MCP 只有 8 个工具（status、account、shards、rooms、room 摘要、memory、segment、console），CLI 后来加的能力在 MCP 里都没有。
+- **要做**：补 `room --objects`、`overview`、`history`、`logs`，其余命令（market、messages、code、map）视需要；约定 Memory 等超长结果（超过 25000 字符）的截断或分页；常驻 socket，避免每次 console 调用都重连。
+
+### 5. `history --changed`
+
+- **现状**：`history --to` 的变化记录里夹着 `_fatigue`、`_oldFatigue` 这类引擎内部字段，看战斗时噪声大。
+- **要做**：`--changed hits,store` 只保留 `changes` 里含这些键的记录，并把 `changes` 裁剪到这些键。默认行为不变。
