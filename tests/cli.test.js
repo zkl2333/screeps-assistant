@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const path = require('node:path');
 const {commandArgs, decodeStdinChunks, expressionSourceNames, parseArgs, readConsoleExpression} = require('../src/cli/args');
 const {applyOutputOptions, consoleEnvelope, printResult} = require('../src/cli/output');
 
@@ -27,6 +28,28 @@ assert.equal(decodeStdinChunks([Buffer.from([0xe4]), Buffer.from([0xb8, 0xad])])
 await assert.rejects(() => readConsoleExpression({_: ['a'], expr: 'b'}), /来源只能给一种/);
 await assert.rejects(() => readConsoleExpression({file: 'missing.js'}, {readFile: async () => {throw Object.assign(new Error('missing'), {code: 'ENOENT'});}}), /表达式文件不存在：missing\.js/);
 
+// --file 先按原样找；裸名找不到再去 probes/，.js 可省略；带目录的路径不改写。
+const probesDir = path.join('repo', 'probes');
+const fakeFiles = {[path.join(probesDir, 'evac-check.js')]: 'Game.time', 'local.js': 'Game.cpu'};
+const readFake = async file => {
+  if (file in fakeFiles) return fakeFiles[file];
+  throw Object.assign(new Error('missing'), {code: 'ENOENT'});
+};
+assert.equal(await readConsoleExpression({file: 'evac-check'}, {probesDir, readFile: readFake}), 'Game.time');
+assert.equal(await readConsoleExpression({file: 'evac-check.js'}, {probesDir, readFile: readFake}), 'Game.time');
+assert.equal(await readConsoleExpression({file: 'local.js'}, {probesDir, readFile: readFake}), 'Game.cpu');
+await assert.rejects(
+  () => readConsoleExpression({file: path.join('other', 'evac-check.js')}, {probesDir, readFile: readFake}),
+  error => error.message === `表达式文件不存在：${path.join('other', 'evac-check.js')}`,
+);
+await assert.rejects(() => readConsoleExpression({file: 'nope'}, {probesDir, readFile: readFake}), /表达式文件不存在：nope、.*nope、.*nope\.js/);
+await assert.rejects(
+  () => readConsoleExpression({file: 'locked.js'}, {probesDir, readFile: async () => {throw Object.assign(new Error('denied'), {code: 'EACCES'});}}),
+  /无法读取表达式文件 locked\.js：denied/,
+);
+
+assert.deepEqual(parseArgs(['room', 'E43N28', '--objects']), {_: ['E43N28'], objects: true, command: 'room'});
+
 const creeps = [
   {name: 'h1', memory: {role: 'harvester', room: 'E1N1'}},
   {name: 'u1', memory: {role: 'upgrader', room: 'E1N1'}},
@@ -44,6 +67,12 @@ assert.deepEqual(applyOutputOptions({h1: creeps[0]}, {fields: 'name,memory.role'
   h1: {name: 'h1', 'memory.role': 'harvester'},
 });
 assert.throws(() => applyOutputOptions('text', {fields: 'name'}), /--fields 只适用于数组或对象集合，当前结果是 string/);
+
+// --pick 先取子路径，--filter / --fields 作用于取出的部分。
+const report = {room: 'E1N1', stats: {energyHarvested: {total: 5, series: []}, creepsLost: {total: 0, series: []}}};
+assert.deepEqual(applyOutputOptions(report, {pick: 'stats', fields: 'total'}), {energyHarvested: {total: 5}, creepsLost: {total: 0}});
+assert.equal(applyOutputOptions(report, {pick: 'stats.energyHarvested.total'}), 5);
+assert.throws(() => applyOutputOptions(report, {pick: 'stats.missing'}), /--pick 路径不存在：stats\.missing/);
 
 const compact = [];
 printResult({a: 1}, {compact: true}, {write: text => compact.push(text)});

@@ -83,6 +83,11 @@ function consoleEnvelope(result, value) {
 
 function applyOutputOptions(value, args = {}) {
   let result = value;
+  if (args.pick !== undefined) {
+    // 先取子路径，再对它套 --filter / --fields，例如 history 的 --pick stats --fields total。
+    result = readPath(result, args.pick);
+    if (result === undefined) throw new Error(`--pick 路径不存在：${args.pick}`);
+  }
   if (args.filter !== undefined) {
     assertCollection(result, 'filter');
     result = filterCollection(result, parseConditions(args.filter));

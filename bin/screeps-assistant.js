@@ -22,6 +22,13 @@ function options(args) {
   return {target: args.target || 'main', shard: args.shard, account: args.account};
 }
 
+/** 房间名可写成位置参数或 --room。 */
+function roomArg(args, command) {
+  const room = args.room || args._[0];
+  if (!room) throw new Error(`${command} 命令需要房间名：${command} E43N28 或 --room E43N28`);
+  return room;
+}
+
 function resetTimeFromHeaders(headers) {
   const reset = Number(headers?.['x-ratelimit-reset'] ?? headers?.['X-RateLimit-Reset']);
   if (!Number.isFinite(reset)) return null;
@@ -162,7 +169,11 @@ async function main() {
     return printResult({...account, gclProgress: gclProgress(account.gcl)}, args);
   }
   if (args.command === 'rooms') return printResult(await queries.listRooms(opts), args);
-  if (args.command === 'room') return printResult(await queries.getRoom({...opts, room: args.room}), args);
+  if (args.command === 'room') {
+    const room = roomArg(args, 'room');
+    if (args.objects) return printResult(await queries.getRoomObjects({...opts, room}), args);
+    return printResult(await queries.getRoom({...opts, room}), args);
+  }
   if (args.command === 'memory') {
     const memoryPath = args.path !== undefined ? args.path : (args._[0] || '');
     const {api, shard} = await context(opts);
@@ -191,9 +202,8 @@ async function main() {
     return printResult({unread: await api.userMessagesUnreadCount(), messages: await api.userMessagesIndex()}, args);
   }
   if (args.command === 'history') {
-    if (!args.room || !args.stat) throw new Error('history 命令需要 --room 房间名和 --stat 统计名');
-    const {api, shard} = await context(opts);
-    return printResult(await api.history(args.room, args.stat, args.interval || 8, args.resource, shard), args);
+    const room = roomArg(args, 'history');
+    return printResult(await queries.getRoomStats({...opts, room, interval: args.interval, stat: args.stat}), args);
   }
   if (args.command === 'shards') return printResult(await queries.listShards(opts), args);
   if (args.command === 'world') return printResult(await readWorld(opts), args);

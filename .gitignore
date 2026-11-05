@@ -11,3 +11,7 @@ backups/
 /*.json
 !/package.json
 !/package-lock.json
+
+# 一次性 console 探针放 probes/，只有说明文件入库
+/probes/*
+!/probes/README.md
