@@ -96,6 +96,7 @@ node bin/screeps-assistant.js room E43N28 --objects --filter type=creep --fields
 node bin/screeps-assistant.js history E43N28 --target main --shard shard2
 node bin/screeps-assistant.js history E43N28 --interval 180 --stat creepsLost --target main --shard shard2
 node bin/screeps-assistant.js history E43N28 --pick stats --fields total --compact --target main --shard shard2
+node bin/screeps-assistant.js history E43N28 --tick 77950310 --target main --shard shard2
 
 # Memory（路径可用位置参数或 --path；省略即查整个 Memory）与 Segment
 node bin/screeps-assistant.js memory rooms.E43N28 --target main --shard shard2
@@ -124,6 +125,8 @@ node bin/screeps-assistant.js map --target season --around E5S5 --radius 3 --sum
 
 - `--interval` 是每格分钟数：`8`（默认，最近约 64 分钟）、`180`（约 24 小时）、`1440`（按天，约一周）；
 - 每个统计项给出 `total`（序列求和）和 `series`；`end` 是这一格结束的本地时间（带时区偏移），最后一格通常还没结束，标 `inProgress: true`；
+- 每格的 `ticks: [from, to]` 是这一格覆盖的 tick 范围，按当前 tick 和分片平均 tick 时长**估算**（顶层 `gameTime`、`tickMs` 就是这两个换算依据），越久远误差越大，边界附近可能差一格。相邻两格首尾相接，进行中的格子 `to` 等于 `gameTime`；读不到当前 tick 或 tick 时长时三个字段都没有，统计照常输出；
+- `--tick <tick>` 只保留覆盖该 tick 的那一格（`total` 也只算这一格，顶层多一个 `tick`）；不给 `--interval` 时自动从 8、180、1440 里选能覆盖它的最细一档。tick 还没到、早于最大一档的范围、或读不到时钟时会报错；
 - 统计项：`energyHarvested`（采集）、`energyConstruction`（建造和维修）、`energyCreeps`（孵化和续命）、`energyControl`（升级产生的 GCL 进度，不是能量）、`creepsProduced`、`creepsLost`、`powerProcessed`；`--stat` 只看一项；
 - 赛季服的房间统计时有时无，没有数据时 `stats` 为空。
 

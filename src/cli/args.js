@@ -8,7 +8,7 @@ const COMMANDS = ['summary', 'account', 'rooms', 'room', 'memory', 'segment', 'c
 const BOOLEAN_FLAGS = new Set(['all', 'ascii', 'no-cache', 'summary-only', 'compact', 'raw', 'envelope', 'objects', 'help']);
 const VALUE_FLAGS = new Set([
   'target', 'shard', 'account', 'room', 'path', 'id', 'expr', 'file', 'timeout', 'branch',
-  'stat', 'interval', 'rooms', 'around', 'radius', 'concurrency', 'cache-ttl',
+  'stat', 'interval', 'tick', 'rooms', 'around', 'radius', 'concurrency', 'cache-ttl',
   'retry', 'repeat', 'times', 'pick', 'filter', 'fields',
 ]);
 const PROBES_DIR = path.join(__dirname, '..', '..', 'probes');
@@ -142,7 +142,7 @@ function helpText() {
   account                  账号概况（含 GCL 阶梯）
   rooms                    当前分片的己方房间
   room <房间>              房间现场摘要；--objects 输出全部对象（不需要视野、不占 console 额度）
-  history <房间>           官方房间统计；--interval 8|180|1440（每格分钟数），--stat 只看一项
+  history <房间>           官方房间统计；--interval 8|180|1440（每格分钟数），--stat 只看一项，--tick 只看覆盖该 tick 的那一格
   memory [路径]            按路径读 Memory；省略路径读整个 Memory
   segment --id <id,...>    读 Memory Segment
   console                  执行游戏内表达式（见下）

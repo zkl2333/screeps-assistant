@@ -203,7 +203,7 @@ async function main() {
   }
   if (args.command === 'history') {
     const room = roomArg(args, 'history');
-    return printResult(await queries.getRoomStats({...opts, room, interval: args.interval, stat: args.stat}), args);
+    return printResult(await queries.getRoomStats({...opts, room, interval: args.interval, stat: args.stat, tick: args.tick}), args);
   }
   if (args.command === 'shards') return printResult(await queries.listShards(opts), args);
   if (args.command === 'world') return printResult(await readWorld(opts), args);

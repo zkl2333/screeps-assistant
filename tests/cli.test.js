@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const {commandArgs, decodeStdinChunks, expressionSourceNames, parseArgs, readConsoleExpression} = require('../src/cli/args');
+const {commandArgs, decodeStdinChunks, expressionSourceNames, helpText, parseArgs, readConsoleExpression} = require('../src/cli/args');
 const {applyOutputOptions, consoleEnvelope, printResult} = require('../src/cli/output');
 
 (async () => {
@@ -49,6 +49,12 @@ await assert.rejects(
 );
 
 assert.deepEqual(parseArgs(['room', 'E43N28', '--objects']), {_: ['E43N28'], objects: true, command: 'room'});
+
+// history 的 --tick 是带值参数；help 的 history 那一行要列出它。
+assert.deepEqual(parseArgs(['history', 'E43N28', '--tick', '77950310']), {_: ['E43N28'], tick: '77950310', command: 'history'});
+assert.deepEqual(parseArgs(['history', 'E43N28', '--tick=77950310']), {_: ['E43N28'], tick: '77950310', command: 'history'});
+assert.throws(() => parseArgs(['history', 'E43N28', '--tick']), /参数缺少值：--tick/);
+assert.match(helpText(), /history <房间>[^\n]*--tick/);
 
 const creeps = [
   {name: 'h1', memory: {role: 'harvester', room: 'E1N1'}},

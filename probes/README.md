@@ -11,7 +11,7 @@
 | 房间现场：creep 位置/血量/疲劳、建筑存量、工地、墓碑 | `room E43N28 --objects --filter type=creep --fields name,x,y,hits,fatigue` |
 | 房间摘要：控制器、建筑计数、敌方 creep | `room E43N28` |
 | Memory 子树 | `memory rooms.E43N28` / `memory creeps --filter role=scout --fields role,origin` |
-| 官方房间统计：采集、孵化、creep 损失 | `history E43N28 --interval 180` |
+| 官方房间统计：采集、孵化、creep 损失 | `history E43N28 --interval 180`；拿到 tick 想看那一刻：`history E43N28 --tick 77950310`（自动选能覆盖它的最细一档） |
 
 `room --objects` 读的是官方房间对象接口：不需要视野，也不占 console 额度（360 次/小时）。
 
