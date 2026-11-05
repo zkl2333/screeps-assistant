@@ -4,12 +4,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {Buffer} = require('node:buffer');
 
-const COMMANDS = ['summary', 'account', 'rooms', 'room', 'memory', 'segment', 'console', 'code', 'market', 'messages', 'overview', 'history', 'shards', 'world', 'map', 'help'];
-const BOOLEAN_FLAGS = new Set(['all', 'ascii', 'no-cache', 'summary-only', 'compact', 'raw', 'envelope', 'objects', 'help']);
+const COMMANDS = ['summary', 'account', 'rooms', 'room', 'memory', 'segment', 'console', 'code', 'market', 'messages', 'overview', 'history', 'logs', 'shards', 'world', 'map', 'help'];
+const BOOLEAN_FLAGS = new Set(['all', 'ascii', 'no-cache', 'summary-only', 'compact', 'raw', 'envelope', 'objects', 'errors', 'all-shards', 'text', 'help']);
 const VALUE_FLAGS = new Set([
   'target', 'shard', 'account', 'room', 'path', 'id', 'expr', 'file', 'timeout', 'branch',
   'stat', 'interval', 'tick', 'rooms', 'around', 'radius', 'concurrency', 'cache-ttl',
   'retry', 'repeat', 'times', 'pick', 'filter', 'fields', 'to',
+  'duration', 'grep', 'limit',
 ]);
 const PROBES_DIR = path.join(__dirname, '..', '..', 'probes');
 const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, ...VALUE_FLAGS]);
@@ -144,6 +145,7 @@ function helpText() {
   room <房间>              房间现场摘要；--objects 输出全部对象（不需要视野、不占 console 额度）
   overview <房间>          官方房间统计；--interval 8|180|1440（每格分钟数），--stat 只看一项，--tick 只看覆盖该 tick 的那一格
   history <房间>           房间回放：--tick <tick> 还原那个 tick 的房间现场；再加 --to <tick> 列出这段 tick 内每个对象的变化（最多 1000 tick）
+  logs                     听 bot 的 console 日志（实时流，没有历史）：--duration <秒，默认 30，最多 600>，--grep <关键词>，--errors 只看报错，--all-shards，--limit <行数，默认 200>，--text 一行一条
   memory [路径]            按路径读 Memory；省略路径读整个 Memory
   segment --id <id,...>    读 Memory Segment
   console                  执行游戏内表达式（见下）
@@ -162,6 +164,11 @@ function helpText() {
   node bin/screeps-assistant.js history E43N28 --tick 77949750 --filter type=creep --fields name,username,x,y,hits
   node bin/screeps-assistant.js history E43N28 --tick 77949750 --to 77949780 --filter type=creep --fields tick,op,name,x,y,changes
 tick N 是处理完第 N 个 tick 后的现场（bot 在 Game.time=N+1 看到的状态）；本 tick 新生成的对象晚一帧出现。
+
+日志（logs：订阅 console 事件流，不发送任何表达式，不占 console 发送额度；查不到过去的日志）：
+  node bin/screeps-assistant.js logs --errors --duration 120 --target main --shard shard2
+  node bin/screeps-assistant.js logs --duration 30 --grep 单位 --text --target main --shard shard2
+tick 是按到达时间估算的（误差约 ±1～2 tick），只有目标分片的行才有；拿到 tick 可以接 history 看那一刻的房间。
 
 console 表达式三选一：位置参数、--expr、--file <路径或 probes/ 下的探针名>；--file - 读 stdin
   node bin/screeps-assistant.js console --file my-probe --target main --shard shard2

@@ -3,6 +3,7 @@
 
 const {context, gclProgress, resolveTarget} = require('../src/api/client');
 const queries = require('../src/api/queries');
+const logs = require('../src/api/logs');
 const {
   consoleSummary,
   openConsoleSession,
@@ -208,6 +209,26 @@ async function main() {
   if (args.command === 'history') {
     const room = roomArg(args, 'history');
     return printResult(await queries.getRoomHistory({...opts, room, tick: args.tick, to: args.to}), args);
+  }
+  if (args.command === 'logs') {
+    if (args.text && ['pick', 'filter', 'fields', 'compact'].some(key => args[key] !== undefined)) {
+      throw new Error('--text 不能和 --pick / --filter / --fields / --compact 一起用');
+    }
+    // Ctrl+C 只提前结束监听，已收集的日志照常输出。
+    const controller = new AbortController();
+    const interrupt = () => controller.abort();
+    process.once('SIGINT', interrupt);
+    let entries;
+    try {
+      entries = await logs.collectLogs({...opts, duration: args.duration, grep: args.grep, errors: Boolean(args.errors), allShards: Boolean(args['all-shards']), limit: args.limit}, {signal: controller.signal});
+    } finally {
+      process.off('SIGINT', interrupt);
+    }
+    if (args.text) {
+      for (const entry of entries) console.log(logs.formatLogLine(entry));
+      return;
+    }
+    return printResult(entries, args);
   }
   if (args.command === 'shards') return printResult(await queries.listShards(opts), args);
   if (args.command === 'world') return printResult(await readWorld(opts), args);

@@ -81,6 +81,7 @@ module.exports = {
   MAX_EXPRESSION_BYTES,
   assertExpressionSize,
   createRequestId,
+  decodeHtmlEntities,
   expressionBytes,
   parseResponse,
   unwrapValue,

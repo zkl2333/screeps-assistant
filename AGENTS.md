@@ -155,6 +155,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
 
 - **读取状态：** 查询账号、Shard、房间、资源、敌情、Memory 和运行状态。
 - **Console 执行：** 执行用户明确要求的游戏内表达式并返回输出；排查、评估和 review 默认只读，普通游戏操作可根据已确认目标构造表达式。默认按同一请求 ID 自动重试，游戏内用 `global.__sa` 按 ID 缓存结果（100 tick 后清理），重复到达不会再次执行。仅当两次发送之间发生 global 重置（如发布新代码）时可能重复执行，写入类表达式建议 `--retry 0`；`--raw` 关闭包装与重试。
+- **监听 console：** 想看 bot 自己打印的日志（例如发布后观察有没有新报错）不用发表达式，用 `logs`：`node bin/screeps-assistant.js logs --errors --duration 120 --target main --shard shard2`。它只订阅 console 事件流，不占 console 发送额度；只能往后听、没有历史，日志里的 tick 是估算的（误差约 ±1～2 tick）。
 - **监控分析：** 提供 HTTP / WebSocket 采集、结构化输出和通用分析能力。
 - **代码备份：** 从 Screeps 只读拉取代码，辅助核对线上版本。
 - **工具开发：** 修改本项目的 API 客户端、查询命令和分析脚本。
@@ -196,6 +197,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
    | `gameRoomObjects` | `room <房间> --objects`（摘要用 `room <房间>`） |
    | `gameRoomOverview` | `overview <房间>` |
    | `history`（房间回放） | `history <房间> --tick <tick> [--to <tick>]` |
+   | console 实时流（socket `console` 订阅） | `logs [--errors] [--duration <秒>] [--grep <关键词>]` |
    | `userMemoryGet` | `memory <路径>` |
    | `userMemorySegmentGet` | `segment --id <id>` |
    | `userCodeGet` | `code` |

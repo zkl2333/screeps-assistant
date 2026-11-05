@@ -80,6 +80,30 @@ assert.equal(cliFailure(['history', 'E43N28']), '查询失败：history 需要 -
 assert.equal(cliFailure(['history', '--room', 'E43N28', '--tick', '100', '--to', '50']), '查询失败：--to 必须大于 --tick（收到 --tick 100 --to 50）');
 assert.equal(cliFailure(['history', 'E43N28', '--tick', 'abc']), '查询失败：--tick 必须是非负整数，收到：abc');
 
+// logs 订阅 console 事件流听 bot 的日志：布尔 flag 和带值 flag 各自解析，help 里有命令行和示例小节
+assert.ok(COMMANDS.includes('logs'));
+assert.doesNotThrow(() => commandArgs(['logs']));
+assert.deepEqual(
+  parseArgs(['logs', '--duration', '20', '--grep', '单位', '--errors', '--all-shards', '--limit', '50', '--text']),
+  {_: [], duration: '20', grep: '单位', errors: true, 'all-shards': true, limit: '50', text: true, command: 'logs'},
+);
+assert.deepEqual(parseArgs(['logs', '--duration=20', '--grep=单位', '--limit=50']), {_: [], duration: '20', grep: '单位', limit: '50', command: 'logs'});
+assert.deepEqual(parseArgs(['logs', '--errors=false']), {_: [], command: 'logs'});
+assert.throws(() => parseArgs(['logs', '--duration']), /参数缺少值：--duration/);
+assert.throws(() => parseArgs(['logs', '--grep']), /参数缺少值：--grep/);
+assert.throws(() => parseArgs(['logs', '--limit']), /参数缺少值：--limit/);
+assert.match(helpText(), /logs\s+听 bot 的 console 日志[^\n]*--duration[^\n]*--grep[^\n]*--errors[^\n]*--all-shards[^\n]*--limit[^\n]*--text/);
+assert.match(helpText(), /日志（logs/);
+assert.match(helpText(), /logs --errors --duration 120/);
+
+// bin 的 logs 分支：参数在联网之前就校验，所以不需要凭据也能确认
+assert.equal(cliFailure(['logs', '--text', '--compact']), '查询失败：--text 不能和 --pick / --filter / --fields / --compact 一起用');
+assert.equal(cliFailure(['logs', '--text', '--filter', 'type=x']), '查询失败：--text 不能和 --pick / --filter / --fields / --compact 一起用');
+assert.equal(cliFailure(['logs', '--text', '--pick', 'x', '--fields', 'text']), '查询失败：--text 不能和 --pick / --filter / --fields / --compact 一起用');
+assert.match(cliFailure(['logs', '--duration', '0']), /^查询失败：--duration 必须是 1～\d+ 的整数（秒），收到：0$/);
+assert.match(cliFailure(['logs', '--limit', 'abc']), /^查询失败：--limit 必须是 1～\d+ 的整数，收到：abc$/);
+assert.equal(cliFailure(['logs', '--grep', '']), '查询失败：--grep 不能为空');
+
 const creeps = [
   {name: 'h1', memory: {role: 'harvester', room: 'E1N1'}},
   {name: 'u1', memory: {role: 'upgrader', room: 'E1N1'}},

@@ -102,6 +102,11 @@ node bin/screeps-assistant.js overview E43N28 --tick 77950310 --target main --sh
 node bin/screeps-assistant.js history E43N28 --tick 77949750 --filter type=creep --fields name,username,x,y,hits --target main --shard shard2
 node bin/screeps-assistant.js history E43N28 --tick 77949750 --to 77949780 --filter type=creep --fields tick,op,name,x,y,changes --target main --shard shard2
 
+# 日志（订阅 console 事件流，只听不发表达式）：发布后盯 2 分钟有没有新报错 / 看某个模块在打什么 / 一行一条
+node bin/screeps-assistant.js logs --errors --duration 120 --target main --shard shard2
+node bin/screeps-assistant.js logs --duration 30 --grep 单位 --target main --shard shard2
+node bin/screeps-assistant.js logs --duration 20 --text --target main --shard shard2
+
 # Memory（路径可用位置参数或 --path；省略即查整个 Memory）与 Segment
 node bin/screeps-assistant.js memory rooms.E43N28 --target main --shard shard2
 node bin/screeps-assistant.js segment --id 0,1 --target main --shard shard2
@@ -150,6 +155,52 @@ node bin/screeps-assistant.js map --target season --around E5S5 --radius 3 --sum
 - `--concurrency` 控制并发请求数（默认 4，必须是 >= 1 的整数）；
 - 地形永不变化，永久缓存在本地 `.cache/map/`（`--no-cache` 关闭；可选 `--cache-ttl` 毫秒强制过期）；房间状态和对象每次实时查询；
 - 默认输出逐房间 JSON（地形统计、能源矿、矿物、赛季资源、反应堆、守护者巢穴、入侵核心）；`--summary-only` 只输出范围汇总；`--ascii` 打印 50×50 文字地形图。
+
+## 日志（logs）
+
+`logs` 订阅官方 console 事件流（WebSocket 的 `console` 频道），听 bot 在游戏控制台里自己打印的日志，也就是网页客户端 Console 面板里的那些文字。它去掉 HTML 颜色和链接标签，按条件过滤，给每行附上估算的 tick，输出为数组（可接 `--pick` / `--filter` / `--fields`），或用 `--text` 一行一条。
+
+```bash
+# 发布后盯 2 分钟有没有新报错
+node bin/screeps-assistant.js logs --errors --duration 120 --target main --shard shard2
+
+# 看某个模块在打什么
+node bin/screeps-assistant.js logs --duration 30 --grep 单位 --target main --shard shard2
+
+# 人读：一行一条，行首是 ~tick 分片
+node bin/screeps-assistant.js logs --duration 20 --text --target main --shard shard2
+
+# 所有分片的日志，只留 shard 和 text 两个字段，最多 10 行
+node bin/screeps-assistant.js logs --duration 15 --all-shards --fields shard,text --limit 10 --target main --shard shard2
+```
+
+**和 `console` 命令的区别**：`console` 往游戏里发一条表达式、取回返回值；`logs` 不发送任何东西，只订阅事件流，听 bot 每个 tick 自己打的日志。监听不占 console 发送额度（`POST /api/user/console` 每小时 360 次的那个）。
+
+参数：
+
+- `--duration <秒>`：听多久，默认 30，最多 600；
+- `--grep <关键词>`：只留文本（去掉 HTML 之后）包含关键词的行，不区分大小写，是纯子串，不是正则；
+- `--errors`：只留报错，包括脚本抛出的未捕获异常，以及文本里带 `*Error`（如 `TypeError`）、`Exception`、`Uncaught`、`报错`、`错误`、`异常` 的行。这是文本匹配，覆盖不到 bot 其它写法的报错；和 `--grep` 同用是“且”；
+- `--all-shards`：默认只输出目标分片（`--shard`）的日志。一条订阅里混着你所有分片的日志，加上它才输出其它分片；
+- `--limit <行数>`：最多输出多少行，默认 200，最多 5000。收满就提前结束监听，不等 `--duration`；先按 `--grep` / `--errors` 过滤再计数；
+- `--text`：一行一条，格式 `~tick 分片 [错误] 文本`（没有 tick 时省略 `~tick`）。不能和 `--pick` / `--filter` / `--fields` / `--compact` 同用，这些只作用于默认的数组输出；
+- Ctrl+C 提前结束监听，已收集的日志照常输出；stderr 有一行汇总（实际听了几秒、收到几行、输出几行，是否提前结束），不进 stdout。
+
+输出数组里每个条目的字段：
+
+| 字段 | 含义 |
+|---|---|
+| `tick` | 估算的 tick，只有目标分片的行才有；估算不出来时没有这个字段 |
+| `shard` | 这行日志来自哪个分片 |
+| `text` | 去掉 HTML 标签、解码实体后的文本，保留 bot 用来对齐的空格 |
+| `error` | 只有为 `true` 时才有：脚本抛出的未捕获异常 |
+
+要点：
+
+- **只能往后听，没有历史。** 这个流只有实时数据，订阅之前打印的日志查不到。bot 平时很能说（2026-11-05 实测 25 秒收到 23 行），所以要靠 `--grep` / `--errors` / `--limit` 收窄；
+- **tick 是估算的。** 事件里没有 tick。工具在监听开始和结束时各读一次当前 tick（`gameTime`），日志行按到达时间在两者之间线性插值取整，误差约 ±1～2 tick，不依赖本机时钟与服务器同步。只有目标分片的行有 tick（锚点读的是目标分片，其它分片的行没有）；读不到当前 tick 时条目没有 `tick` 字段，监听结果不受影响，stderr 汇总里会提示；
+- **日志里的 tick 与 `history` 的对应关系**：日志 tick N 是 bot 运行时的 `Game.time = N`，它看到的现场是回放 tick `N-1`，它发出的意图的结果在回放 tick `N`。所以拿到一行日志的 tick，可以接 `history <房间> --tick <N-1>` 看 bot 当时看到的房间，用 `--tick <N>` 看它这一步的结果；
+- 表达式回包（`messages.results`）不属于 bot 日志，会被忽略；清理后为空的行会被跳过；一条日志内部的换行原样保留，所以 `--text` 下一个条目可能占多行。
 
 ## Console 表达式与稳定回包
 

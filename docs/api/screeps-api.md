@@ -127,6 +127,22 @@
 - 回放里的 `user` 只是 user id。`GET /api/user/find?id=` 即 `api.userFindById(id)` 能反查：返回 `{ok: 1, user: {_id, username, badge, gcl, power, steam}}`（**不要输出 `steam`**，只取 `username`）；id 不存在时返回 `{ok: 1, user: {error: '…'}}` 之类，要容错。特殊 id：`'2'` 是 `Invader`，`'3'` 是 `Source Keeper`（不是合法 ObjectId，别拿去查）。
 - 还原：取一块，`state = structuredClone(ticks[base])`，之后逐 tick 应用差异即得到任意 tick 的现场。跨块那一格没有差异可用（下一块的第一帧是快照），用上一块还原到最后一帧的状态和下一块的快照逐对象比出差异。引擎在差异里把“键被删”也写成 `null`，所以还原出来的状态会留着 `null`，而官方快照里直接没有这个键（实测如 creep 的 `_oldFatigue`）；比较时要把 `null` 和缺键当成同一回事，否则块边界会多出没发生过的变化。用这个方法对 E43N28 的 9 对相邻块实测，块边界那一格的变化条数（9～26）和块内相邻帧（平均约 20）同量级，没有累积漂移。
 
+## 官方 console 事件流（WebSocket）
+
+- **状态：** `verified`
+- **验证日期：** 2026-11-05（正式服，只读订阅 25 秒；同一个 25 秒窗口里收到了 shardX、shard3、shard2 三个分片的事件）
+- **客户端方法：** `await api.socket.connect()` 后 `await api.socket.subscribe('console', cb)`；收尾用 `api.socket.unsubscribe('console', cb)` 和 `api.socket.disconnect()`。连接与清理的写法见 `src/api/console.js` 的 `openConsoleSession`：`api.socket.on('error', () => {})` 加 `api.socket.off('error', console.error)` 可以静默 socket 错误（screeps-api 默认把它用 `console.error` 整段打印）。
+- **命令：** `node bin/screeps-assistant.js logs --duration 30 --target main --shard shard2`（实现见 `src/api/logs.js`）
+- `cb(event)` 的 `event` 键是 `type`、`id`、`path`、`data`；`event.data` 的键是 `messages`、`shard`；脚本抛出未捕获异常时是 `error`（和 `shard`），见上面「Console 通道」。
+- `data.messages.log`：字符串数组，是 bot 这个 tick 打印的日志，**每条是带 HTML 的字符串**。例如 `[<font color="#ffffff">    主循环</font>]         Bucket： 9791`，或 `<font color="#ff8080">[<font color="#80ff80">      单位</font>]<font color="#80ff80">[<a href="#!/room/shard2/E44N28">E44N28</a>]</font> TRR_7m 本 Tick 消耗了 6.33 CP`。颜色是 `<font color>`，房间名是 `<a href="#!/room/{shard}/{room}">` 链接，bot 用空格给标签对齐，去标签后要保留这些空格。
+- `data.messages.results`：表达式执行结果。本工具 `console` 命令的 `@@sa:` 协议回包走这里；`logs` 忽略它。
+- `data.shard`：这条事件属于哪个分片。**一条订阅里混着所有分片的日志**，不是只给 `--shard` 指定的那一个，要按 `data.shard` 过滤。
+- `data.error`：脚本抛出未捕获异常时的错误文本（`src/api/console.js` 的 `dispatch` 就是这么处理的），`logs` 把它当作一条 `error: true` 的记录。
+- **事件里没有 tick。** 只能按到达时间估算：监听开始和结束时各读一次 `api.gameTime(shard)`（`{ok, time}`，当前 tick），中间按到达时间线性插值取整。这种“两端锚点加实测斜率”的做法不依赖 `gameShardsInfo` 的平均 tick 时长，也不要求本机时钟与服务器同步；两端各有 ±0.5 tick 的取整误差，整体误差约 ±1～2 tick。锚点读的是目标分片的 tick，其它分片的日志算不出 tick。
+- `api.gameTime(shard)` 缺 shard 时是**同步 throw**，不返回 rejected promise；要统一按失败处理，得用 `async` 包一层（`const attempt = async call => call();`，`src/api/queries.js` 和 `src/api/logs.js` 都这么做）。
+- **只有实时数据，没有历史**：订阅之前打印的日志查不到。bot 平时很能说（实测 25 秒收到 23 行，含每单位 CPU 消耗、限流跳过等），需要过滤和上限。
+- 订阅是 WebSocket 上的只读订阅，不调用 `POST /api/user/console`，所以不占那个 360 次/小时的发送额度。
+
 ## 上游 CLI
 
 本仓库命令没封装的只读端点，用上游 `screeps-api` CLI 兜底：
