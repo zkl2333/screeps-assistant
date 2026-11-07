@@ -11,7 +11,9 @@
 - `room --objects`（原样对象，带 `username`）、通用 `--pick`、`probes/` 目录与 `--file <探针名>` 查找；
 - `overview`：官方房间统计，每格带估算的 tick 范围，`--tick` 选格；
 - `history`：官方房间回放，`--tick` 还原某个 tick 的房间现场，`--to` 列出一段 tick 内每个对象的变化；
-- `logs`：订阅 console 事件流听 bot 的日志，去 HTML、按分片和关键词过滤，每行附估算 tick。
+- `logs`：订阅 console 事件流听 bot 的日志，去 HTML、按分片和关键词过滤，每行附估算 tick；
+- `status` 补成 CLI 命令，与 MCP 对齐；
+- MCP 补齐：查询命令收进 `src/commands.js` 命令表，CLI 和 MCP 都从它生成，工具名统一为 `screeps_<命令名>`，参数名用 CLI flag 的 camelCase 形式；`pick` / `filter` / `fields` 三个输出选项在所有工具上通用；`logs` 在 MCP 里封顶 60 秒。
 
 ## 待做
 
@@ -31,10 +33,10 @@
 - **现状**：`code` 只能列出线上模块名，没法确认线上跑的就是本地这份构建。
 - **要做**：读线上模块内容，和本地构建产物比对（长度加哈希），输出一致或不一致及差异概要。只读，不写线上。
 
-### 4. MCP 补齐
+### 4. MCP 补齐（已完成 2026-11-07，剩常驻 socket）
 
-- **现状**：MCP 只有 8 个工具（status、account、shards、rooms、room 摘要、memory、segment、console），CLI 后来加的能力在 MCP 里都没有。
-- **要做**：补 `room --objects`、`overview`、`history`、`logs`，其余命令（market、messages、code、map）视需要；约定 Memory 等超长结果（超过 25000 字符）的截断或分页；常驻 socket，避免每次 console 调用都重连。
+- **已完成**：查询命令收进命令表 `src/commands.js`，CLI 与 MCP 同源；工具名 `screeps_<命令名>`，参数名取 CLI flag 的 camelCase；`room --objects`、`overview`、`history`、`logs`、`map`、`code`、`market`、`messages`、`summary`、`world` 全部补齐；`pick` / `filter` / `fields` 在 MCP 上通用，超长结果靠它们收窄；`logs` 单次封顶 60 秒。
+- **还差**：常驻 socket，避免每次 console 调用都重连。超长结果目前是报错不返回，若以后要真分页再单独开条目。
 
 ### 5. `history --changed`
 

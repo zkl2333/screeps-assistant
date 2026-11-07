@@ -2,7 +2,7 @@
 
 const client = require('./client');
 const {HISTORY_CHUNK, chunkBase, replayChanges, replayState} = require('./replay');
-const {accountSummary, objectSummary, readSummary} = client;
+const {objectSummary, readSummary} = client;
 
 function decodeMemoryValue(value) {
   if (typeof value !== 'string') return value;
@@ -13,9 +13,10 @@ function decodeMemoryValue(value) {
   }
 }
 
+/** 账号原样字段，附上 GCL 阶梯解析。 */
 async function getAccount(options = {}) {
-  const {target, shard, account} = await client.context(options);
-  return {target, shard, account: accountSummary(account)};
+  const {account} = await client.context(options);
+  return {...account, gclProgress: client.gclProgress(account?.gcl)};
 }
 
 async function listShards(options = {}) {
@@ -272,17 +273,36 @@ async function getRoomHistory(options = {}) {
   return withUsernames(result, await resolveUsernames(api, result.map(item => item.user)));
 }
 
+/** 按路径读 Memory，返回解码后的值；省略路径读整个 Memory。 */
 async function getMemory(options = {}) {
-  if (options.path === undefined || options.path === '') throw new Error('memory 查询需要非空 path，避免无意读取整个 Memory');
-  const {api, target, shard} = await client.context(options);
-  const result = await api.userMemoryGet(options.path, shard);
-  return {target, shard, path: options.path, value: decodeMemoryValue(result?.data)};
+  const {api, shard} = await client.context(options);
+  const result = await api.userMemoryGet(options.path || '', shard);
+  return decodeMemoryValue(result?.data);
 }
 
 async function getSegment(options = {}) {
   if (options.id === undefined || options.id === '') throw new Error('segment 查询需要 id');
   const {api, target, shard} = await client.context(options);
   return {target, shard, segments: await api.userMemorySegmentGet(options.id, shard)};
+}
+
+/** 线上代码模块列表；省略 branch 时用目标配置的代码分支。 */
+async function getCode(options = {}) {
+  const {api, config} = await client.context(options);
+  const code = await api.userCodeGet(options.branch || config.codeBranch);
+  return {branch: code.branch, modules: Object.keys(code.modules || {})};
+}
+
+/** 己方市场挂单。 */
+async function getMarketOrders(options = {}) {
+  const {api, shard} = await client.context(options);
+  return {shard, orders: await api.gameMarketMyOrders(shard)};
+}
+
+/** 未读数与消息索引。 */
+async function getMessages(options = {}) {
+  const {api} = await client.context(options);
+  return {unread: await api.userMessagesUnreadCount(), messages: await api.userMessagesIndex()};
 }
 
 function getStatus(options = {}) {
@@ -304,7 +324,10 @@ module.exports = {
   formatLocalTime,
   formatRoomStats,
   getAccount,
+  getCode,
+  getMarketOrders,
   getMemory,
+  getMessages,
   getRoom,
   getRoomHistory,
   getRoomObjects,

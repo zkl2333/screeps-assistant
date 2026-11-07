@@ -59,11 +59,44 @@ const {applyOutputOptions} = require('../src/cli/output');
 
     assert.deepEqual(await queries.listRooms({target: 'main', shard: 'shardX'}), {target: 'main', shard: 'shardX', rooms: ['E49N32']});
     assert.deepEqual((await queries.getRoom({target: 'main', shard: 'shardX', room: 'E49N32'})).summary.spawns, 1);
-    assert.deepEqual(await queries.getMemory({target: 'main', shard: 'shardX', path: 'rooms.E49N32'}), {target: 'main', shard: 'shardX', path: 'rooms.E49N32', value: {value: 42}});
+    assert.deepEqual(await queries.getMemory({target: 'main', shard: 'shardX', path: 'rooms.E49N32'}), {value: 42});
     assert.deepEqual(await queries.getSegment({target: 'main', shard: 'shardX', id: '0'}), {target: 'main', shard: 'shardX', segments: {'0': 'segment'}});
     assert.deepEqual(await queries.listShards({target: 'main', shard: 'shardX'}), shardsInfo);
-    await assert.rejects(() => queries.getMemory({path: ''}), /需要非空 path/);
     await assert.rejects(() => queries.getRoom({room: ''}), /需要 room/);
+
+    // 省略路径读整个 Memory：传给官方接口的是空串；非 JSON 字符串原样返回。
+    const memoryPaths = [];
+    client.context = mockContext({userMemoryGet: async (memoryPath) => {
+      memoryPaths.push(memoryPath);
+      return {data: 'not json'};
+    }});
+    assert.equal(await queries.getMemory({}), 'not json');
+    assert.deepEqual(memoryPaths, ['']);
+
+    // 从 bin 收进来的查询：账号原样字段 + GCL 阶梯、代码模块（省略 branch 用配置分支）、市场挂单、消息。
+    const codeBranches = [];
+    client.context = async options => ({
+      ...(await mockContext({
+        userCodeGet: async branch => {
+          codeBranches.push(branch);
+          return {branch: branch || 'default', modules: {main: 'x', 'main.js.map': 'y'}};
+        },
+        gameMarketMyOrders: async shard => [{_id: 'o1', shard}],
+        userMessagesUnreadCount: async () => ({count: 2}),
+        userMessagesIndex: async () => ({messages: [{_id: 'm1'}]}),
+      })(options)),
+      config: {codeBranch: 'main'},
+    });
+    const accountResult = await queries.getAccount({});
+    assert.equal(accountResult.username, 'tester');
+    assert.equal(accountResult.cpu, 123);
+    assert.deepEqual(accountResult.gclProgress, client.gclProgress(1000));
+    assert.deepEqual(await queries.getCode({}), {branch: 'main', modules: ['main', 'main.js.map']});
+    assert.deepEqual(await queries.getCode({branch: 'season'}), {branch: 'season', modules: ['main', 'main.js.map']});
+    assert.deepEqual(codeBranches, ['main', 'season']);
+    assert.deepEqual(await queries.getMarketOrders({shard: 'shardX'}), {shard: 'shardX', orders: [{_id: 'o1', shard: 'shardX'}]});
+    assert.deepEqual(await queries.getMessages({}), {unread: {count: 2}, messages: {messages: [{_id: 'm1'}]}});
+    client.context = mockContext();
 
     // 全部对象原样返回；带 user 的补 username，无主对象不加字段。
     const objects = await queries.getRoomObjects({target: 'main', shard: 'shardX', room: 'E49N32'});

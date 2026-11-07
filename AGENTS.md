@@ -17,9 +17,10 @@
 ├── .screeps.yml          # 本地 API 配置（含 token，已 gitignore）
 ├── bin/
 │   └── screeps-assistant.js # 正式命令入口（查询只读 + console 透传）
+├── src/commands.js       # 命令表：命令名、参数、处理函数（CLI 与 MCP 共用）
 ├── src/api/              # 目标配置、只读 API、查询层与 console 执行
 ├── src/cli/              # 参数解析与输出选项
-├── src/mcp/              # stdio MCP 入口
+├── src/mcp/              # stdio MCP 入口（按命令表生成 screeps_<命令> 工具）
 ├── src/map/              # 跨环境地图分析（纯函数）与联网扫描
 ├── tools/backup/         # 线上代码只读备份
 ├── tools/live/           # WebSocket 与 CPU 采样
@@ -149,6 +150,8 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
 ### 入口优先级
 
 1. **本工具的 CLI 和 MCP 是主入口。** 目标、分片、多账号和输出选项（`--pick` / `--filter` / `--fields` / `--compact`）在所有命令上一致。已封装的端点不要再走上游 CLI：
+
+   查询命令只在 `src/commands.js` 的命令表里登记一次，CLI 和 MCP 都从它生成：MCP 工具名固定为 `screeps_<命令名>`，参数名是 CLI flag 的 camelCase 形式（`--all-shards` → `allShards`）。**加命令或加参数只改命令表**，不要去 bin 或 `src/mcp/server.mjs` 里另写一份；表外的只有 `console`（带请求 ID 和重试）和 `help`。
 
    | 上游方法 | 本工具命令 |
    |---|---|

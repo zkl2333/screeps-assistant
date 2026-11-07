@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 'use strict';
 
-const {context, gclProgress, resolveTarget} = require('../src/api/client');
-const queries = require('../src/api/queries');
+const {resolveTarget} = require('../src/api/client');
 const logs = require('../src/api/logs');
+const {COMMAND_BY_NAME, flagName} = require('../src/commands');
 const {
   consoleSummary,
   openConsoleSession,
@@ -16,18 +16,36 @@ const {
 } = require('../src/api/console-protocol');
 const {commandArgs, helpText, parseInteger, readConsoleExpression} = require('../src/cli/args');
 const {consoleEnvelope, printResult} = require('../src/cli/output');
-const {readWorld, scanRooms} = require('../src/map/query');
 const {terrainAscii} = require('../src/map/analysis');
 
 function options(args) {
-  return {target: args.target || 'main', shard: args.shard, account: args.account, codeBranch: args.branch};
+  return {target: args.target || 'main', shard: args.shard, account: args.account};
 }
 
-/** 房间名可写成位置参数或 --room。 */
-function roomArg(args, command) {
-  const room = args.room || args._[0];
-  if (!room) throw new Error(`${command} 命令需要房间名：${command} W1N1 或 --room W1N1`);
-  return room;
+/**
+ * 查询命令的参数：flag 按 camelCase 键取值（CLI 写 kebab-case），positional 参数没给 flag 时按顺序取位置参数，
+ * 再叠加通用参数。
+ */
+function commandOptions(command, args) {
+  const result = options(args);
+  let next = 0;
+  for (const [key, param] of Object.entries(command.params || {})) {
+    const value = args[flagName(key)];
+    if (value !== undefined) result[key] = value;
+    else if (param.positional && args._[next] !== undefined) result[key] = args._[next];
+    if (param.positional) next += 1;
+  }
+  return result;
+}
+
+/** 必填参数在联网前校验；房间名和 Segment ID 各有一句带用法的提示。 */
+function checkRequired(command, opts) {
+  for (const [key, param] of Object.entries(command.params || {})) {
+    if (!param.required || (opts[key] !== undefined && opts[key] !== '')) continue;
+    if (param.type === 'room') throw new Error(`${command.name} 命令需要房间名：${command.name} W1N1 或 --${flagName(key)} W1N1`);
+    if (key === 'id') throw new Error(`${command.name} 命令需要 --id，多个 Segment 用逗号分隔`);
+    throw new Error(`${command.name} 命令需要 --${flagName(key)}`);
+  }
 }
 
 function resetTimeFromHeaders(headers) {
@@ -162,54 +180,20 @@ async function main() {
     console.log(helpText());
     return;
   }
-  const opts = options(args);
-  if (args.command === 'summary') return printResult(await queries.readSummary(opts), args);
-  if (args.command === 'account') {
-    const {account} = await context(opts);
-    // 附上 GCL 阶梯解析，原始字段保持不变。
-    return printResult({...account, gclProgress: gclProgress(account.gcl)}, args);
-  }
-  if (args.command === 'rooms') return printResult(await queries.listRooms(opts), args);
-  if (args.command === 'room') {
-    const room = roomArg(args, 'room');
-    if (args.objects) return printResult(await queries.getRoomObjects({...opts, room}), args);
-    return printResult(await queries.getRoom({...opts, room}), args);
-  }
-  if (args.command === 'memory') {
-    const memoryPath = args.path !== undefined ? args.path : (args._[0] || '');
-    const {api, shard} = await context(opts);
-    const res = await api.userMemoryGet(memoryPath, shard);
-    return printResult(queries.decodeMemoryValue(res?.data), args);
-  }
-  if (args.command === 'segment') {
-    if (args.id === undefined) throw new Error('segment 命令需要 --id，多个 Segment 用逗号分隔');
-    return printResult(await queries.getSegment({...opts, id: args.id}), args);
-  }
   if (args.command === 'console') {
     const expression = await readConsoleExpression(args);
     return runCliConsole(args, expression);
   }
-  if (args.command === 'code') {
-    const {api, config} = await context(opts);
-    const code = await api.userCodeGet(args.branch || config.codeBranch);
-    return printResult({branch: code.branch, modules: Object.keys(code.modules || {})}, args);
+
+  const command = COMMAND_BY_NAME[args.command];
+  if (!command) {
+    resolveTarget(options(args));
+    throw new Error(`暂不支持命令：${args.command}`);
   }
-  if (args.command === 'market') {
-    const {api, shard} = await context(opts);
-    return printResult({shard, orders: await api.gameMarketMyOrders(shard)}, args);
-  }
-  if (args.command === 'messages') {
-    const {api} = await context(opts);
-    return printResult({unread: await api.userMessagesUnreadCount(), messages: await api.userMessagesIndex()}, args);
-  }
-  if (args.command === 'overview') {
-    const room = roomArg(args, 'overview');
-    return printResult(await queries.getRoomStats({...opts, room, interval: args.interval, stat: args.stat, tick: args.tick}), args);
-  }
-  if (args.command === 'history') {
-    const room = roomArg(args, 'history');
-    return printResult(await queries.getRoomHistory({...opts, room, tick: args.tick, to: args.to}), args);
-  }
+  const opts = commandOptions(command, args);
+  checkRequired(command, opts);
+
+  // 以下两处只是 CLI 的纯文本输出形式，查询本身与 MCP 共用命令表。
   if (args.command === 'logs') {
     if (args.text && ['pick', 'filter', 'fields', 'compact'].some(key => args[key] !== undefined)) {
       throw new Error('--text 不能和 --pick / --filter / --fields / --compact 一起用');
@@ -220,7 +204,7 @@ async function main() {
     process.once('SIGINT', interrupt);
     let entries;
     try {
-      entries = await logs.collectLogs({...opts, duration: args.duration, grep: args.grep, errors: Boolean(args.errors), allShards: Boolean(args['all-shards']), limit: args.limit}, {signal: controller.signal});
+      entries = await command.run(opts, {signal: controller.signal});
     } finally {
       process.off('SIGINT', interrupt);
     }
@@ -230,33 +214,16 @@ async function main() {
     }
     return printResult(entries, args);
   }
-  if (args.command === 'shards') return printResult(await queries.listShards(opts), args);
-  if (args.command === 'world') return printResult(await readWorld(opts), args);
-  if (args.command === 'map') {
-    const scan = await scanRooms({
-      ...opts,
-      room: args.room,
-      rooms: args.rooms,
-      around: args.around,
-      radius: args.radius,
-      all: Boolean(args.all),
-      concurrency: args.concurrency,
-      cacheTtl: args['cache-ttl'],
-      noCache: Boolean(args['no-cache']),
-    });
-    if (args.ascii) {
-      for (const item of scan.results) {
-        if (!item.ok) continue;
-        console.log(`=== ${item.value.room} ===`);
-        console.log(terrainAscii(item.value.terrainCells || []));
-      }
-      return;
+  if (args.command === 'map' && args.ascii) {
+    const scan = await command.run({...opts, summaryOnly: false});
+    for (const item of scan.results) {
+      if (!item.ok) continue;
+      console.log(`=== ${item.value.room} ===`);
+      console.log(terrainAscii(item.value.terrainCells || []));
     }
-    if (args['summary-only']) return printResult({target: scan.target, shard: scan.shard, summary: scan.summary}, args);
-    return printResult(scan, args);
+    return;
   }
-  resolveTarget(opts);
-  throw new Error(`暂不支持命令：${args.command}`);
+  return printResult(await command.run(opts), args);
 }
 
 main().catch(error => {

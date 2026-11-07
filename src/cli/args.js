@@ -3,14 +3,21 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {Buffer} = require('node:buffer');
+const {COMMAND_TABLE, tableFlags} = require('../commands');
 
-const COMMANDS = ['summary', 'account', 'rooms', 'room', 'memory', 'segment', 'console', 'code', 'market', 'messages', 'overview', 'history', 'logs', 'shards', 'world', 'map', 'help'];
-const BOOLEAN_FLAGS = new Set(['all', 'ascii', 'no-cache', 'summary-only', 'compact', 'raw', 'envelope', 'objects', 'errors', 'all-shards', 'text', 'help']);
+// 查询命令及其参数来自命令表；这里只补 console、help 和 CLI 独有的 flag。
+const COMMANDS = [...COMMAND_TABLE.map(command => command.name), 'console', 'help'];
+const TABLE_FLAGS = tableFlags();
+const BOOLEAN_FLAGS = new Set([
+  ...TABLE_FLAGS.booleans,
+  'compact', 'help', // 通用
+  'raw', 'envelope', // console
+  'ascii', 'text', // map / logs 的纯文本输出
+]);
 const VALUE_FLAGS = new Set([
-  'target', 'shard', 'account', 'room', 'path', 'id', 'expr', 'file', 'timeout', 'branch',
-  'stat', 'interval', 'tick', 'rooms', 'around', 'radius', 'concurrency', 'cache-ttl',
-  'retry', 'repeat', 'times', 'pick', 'filter', 'fields', 'to',
-  'duration', 'grep', 'limit',
+  ...TABLE_FLAGS.values,
+  'target', 'shard', 'account', 'pick', 'filter', 'fields', // 通用
+  'expr', 'file', 'timeout', 'retry', 'repeat', 'times', // console
 ]);
 const PROBES_DIR = path.join(__dirname, '..', '..', 'probes');
 const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, ...VALUE_FLAGS]);
@@ -153,6 +160,7 @@ function helpText() {
   market / messages        己方市场挂单 / 消息索引
   shards / world           分片信息 / 环境概况
   map                      地图分析：--room、--rooms、--around --radius 或 --all
+  status                   检查目标和本地凭证配置（不联网）
 
 通用参数：
   --target <main|ptr|season|pserver，或 .screeps.yml 里的其他服务器>

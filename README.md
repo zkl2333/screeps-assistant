@@ -275,7 +275,18 @@ node bin/screeps-assistant.js room W1N1 --target main --shard shard2 --pick summ
 node /path/to/screeps-assistant/src/mcp/server.mjs
 ```
 
-`.screeps.yml` 按仓库位置读取，不依赖启动目录。MCP 工具直接调用 API，不经过 shell，也不启动 CLI 子进程。目前提供 8 个工具：状态检查、账号、分片、己方房间列表、房间摘要、Memory、Segment 和通用 Console。CLI 里较新的 `room --objects`、`overview`、`history`、`logs` 等命令暂未提供 MCP 版本（见[路线图](docs/roadmap.md)）。Console 传入的是完整游戏内 JavaScript，默认不重试，超时表示执行结果未知。
+`.screeps.yml` 按仓库位置读取，不依赖启动目录。MCP 工具直接调用 API，不经过 shell，也不启动 CLI 子进程。
+
+**工具名就是 `screeps_<CLI 命令名>`**：CLI 的每个查询命令都对应一个 MCP 工具（`screeps_summary`、`screeps_rooms`、`screeps_room`、`screeps_overview`、`screeps_history`、`screeps_logs`、`screeps_memory`、`screeps_segment`、`screeps_code`、`screeps_market`、`screeps_messages`、`screeps_shards`、`screeps_world`、`screeps_map`、`screeps_status`、`screeps_account`），外加能改游戏状态的 `screeps_console`。名字和参数都来自同一张命令表 [`src/commands.js`](src/commands.js)，CLI 和 MCP 不会再各写一份。
+
+参数名是 CLI flag 的 camelCase 形式：`--all-shards` → `allShards`、`--summary-only` → `summaryOnly`、`--cache-ttl` → `cacheTtl`。`--objects` 这类切换形态的 flag 也照搬成布尔参数（`screeps_room` 加 `objects: true`）。三个输出选项在所有工具上通用：`pick`、`filter`、`fields`，用来把大结果压到返回上限以内。
+
+两处 MCP 与 CLI 不同，都是调用形态决定的：
+
+- `logs` 是阻塞式监听，MCP 单次调用时长封顶 60 秒（CLI 可到 600 秒）；
+- 结果超过 25000 字符直接报错不返回，需要用 `pick` / `filter` / `fields` 收窄——`room --objects` 这种整房对象列表几乎一定要带 `filter` 或 `fields`。
+
+Console 传入的是完整游戏内 JavaScript，默认不重试，超时表示执行结果未知。
 
 不支持 MCP、只能执行命令的智能体平台（例如云端沙箱里的 Agent）直接使用本 CLI。简单表达式可以用 `--expr`；复杂表达式使用 stdin：
 
@@ -291,6 +302,7 @@ EOF
 
 ```text
 bin/                       正式命令入口
+src/commands.js            命令表：命令名、参数、处理函数（CLI 与 MCP 共用）
 src/api/                   目标配置、只读 API、查询层和 console 执行
 src/cli/                   参数解析与输出选项
 src/mcp/                   stdio MCP 入口
