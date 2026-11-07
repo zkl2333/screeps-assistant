@@ -63,7 +63,7 @@ node tools/backup/pull-code.js main ./dist # 拉取指定分支到指定目录
 node tools/backup/pull-code.js main ./dist --target main --account alt # 多账号拉取
 ```
 
-不要经 `npm run query --` 传 console 表达式：Windows 的 cmd.exe 会把 `=>` 里的 `>` 当重定向。
+仓库不提供 `npm run query` 这类脚本入口（npm 在 Windows 默认用 cmd.exe 跑 scripts，会在 node 启动前就把 `=>` 里的 `>` 当重定向）。表达式直接走 `node bin/screeps-assistant.js console --file ...` 或 stdin。
 
 ## 配置说明
 

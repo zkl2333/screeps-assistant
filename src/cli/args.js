@@ -190,7 +190,7 @@ EOF
 
 包装模式用请求 ID 匹配回包并按同一 ID 重试；raw 模式关闭包装和重试。写入类表达式建议 --retry 0。
 
-Windows 注意：不要通过 npm run query -- 传 console 表达式，cmd.exe 会把 >、|、&、^、% 当特殊字符；
+Windows 注意：不要经 npm 脚本或任何经过 cmd.exe 的方式传 console 表达式（cmd 会在 node 启动前把 >、|、&、^、% 当特殊字符）；
 Git Bash 会改写以 / 开头的参数。表达式尽量来自文件或 stdin。`;
 }
 

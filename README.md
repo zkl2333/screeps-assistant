@@ -10,7 +10,7 @@ Screeps 外部读取、游戏内表达式执行、实时连接、代码备份和
 
 本工具没封装的只读端点（如市场行情 `gameMarketOrders`、资金流水 `userMoneyHistory`）再用上游 CLI 兜底：`npx --no-install screeps-api call <方法> ...`，只调用只读方法。
 
-> **Windows 警告：不要经 `npm run query --` 传 console 表达式。** cmd.exe 会把 `>`（含 `=>`）、`|`、`&`、`^`、`%` 当特殊字符，导致表达式截断或生成垃圾文件。请直接执行 `node bin/screeps-assistant.js console --file probe.js`，或用 stdin：`--file -`。Git Bash 会把以 `/` 开头的参数改写成路径，表达式同样建议来自文件或 stdin。
+> **Windows 警告：表达式不要走任何会经过 cmd.exe 的命令。** cmd.exe 在 node 启动前就把 `>`（含 `=>`）、`|`、`&`、`^`、`%` 当特殊字符，导致表达式截断，或在仓库里生成 `0)`、`({n` 这种垃圾文件。仓库**不提供** `npm run query` 之类的脚本入口就是为了避开这层（npm 在 Windows 默认用 cmd.exe 跑 scripts）。请直接执行 `node bin/screeps-assistant.js console --file probe.js`，或用 stdin：`--file -`。Git Bash 会把以 `/` 开头的参数改写成路径，表达式同样建议来自文件或 stdin。
 
 ## 安装
 
