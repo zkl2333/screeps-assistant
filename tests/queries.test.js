@@ -96,6 +96,39 @@ const {applyOutputOptions} = require('../src/cli/output');
     assert.deepEqual(codeBranches, ['main', 'season']);
     assert.deepEqual(await queries.getMarketOrders({shard: 'shardX'}), {shard: 'shardX', orders: [{_id: 'o1', shard: 'shardX'}]});
     assert.deepEqual(await queries.getMessages({}), {unread: {count: 2}, messages: {messages: [{_id: 'm1'}]}});
+
+    // 读对话：用户名走索引自带的 users 表解析，直接给 id 也认；输出只留 date/type/text/unread。
+    const threadCalls = [];
+    const giacoId = '6a150bc8c953d4001377cc6e';
+    const squisherId = '578c55f93fd9069e6b589717';
+    const solaceId = '576db75fbe1cccb44b18c882';
+    client.context = mockContext({
+      userMessagesIndex: async () => ({
+        messages: [{_id: giacoId}, {_id: squisherId}],
+        users: {[giacoId]: {username: 'Giaco'}, [squisherId]: {username: 'squisher'}, [solaceId]: {username: 'Solace'}},
+      }),
+      userMessagesList: async respondent => {
+        threadCalls.push(respondent);
+        return {messages: [
+          {_id: 'x', respondent, user: 'u1', date: '2026-11-09T02:09:12.952Z', type: 'in', text: 'hi', unread: false, outMessage: 'y'},
+          {_id: 'y', respondent, user: 'u1', date: '2026-11-09T02:10:00.000Z', type: 'out', text: 'yo', unread: true},
+        ]};
+      },
+    });
+    assert.deepEqual(await queries.getMessageThread({respondent: 'giaco'}), {
+      respondent: {id: giacoId, username: 'Giaco'},
+      count: 2,
+      messages: [
+        {date: '2026-11-09T02:09:12.952Z', type: 'in', text: 'hi', unread: false},
+        {date: '2026-11-09T02:10:00.000Z', type: 'out', text: 'yo', unread: true},
+      ],
+    });
+    // 直接给 id：同样认，用户名从 users 表带上。
+    assert.equal((await queries.getMessageThread({respondent: solaceId})).respondent.username, 'Solace');
+    assert.deepEqual(threadCalls, [giacoId, solaceId]);
+    // 缺参数和未知用户名都报错，且未知用户名会列出已有对话。
+    await assert.rejects(() => queries.getMessageThread({}), /需要对方用户名或 id/);
+    await assert.rejects(() => queries.getMessageThread({respondent: 'nobody'}), /找不到该用户名：nobody。已有对话：Giaco、squisher、Solace/);
     client.context = mockContext();
 
     // 全部对象原样返回；带 user 的补 username，无主对象不加字段。

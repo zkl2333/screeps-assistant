@@ -305,6 +305,43 @@ async function getMessages(options = {}) {
   return {unread: await api.userMessagesUnreadCount(), messages: await api.userMessagesIndex()};
 }
 
+/** ObjectId 形态的用户 id：24 位十六进制。 */
+const OBJECT_ID = /^[0-9a-f]{24}$/i;
+
+/**
+ * 把用户名或 id 解析成对话接口要的 respondent id。索引回包自带 users 表（id → 用户名），
+ * 所以用户名不用额外查询；直接给 id 也认。用户名不区分大小写，但必须完全一致。
+ */
+function resolveRespondent(index, respondent) {
+  const users = index?.users || {};
+  const wanted = String(respondent).toLowerCase();
+  for (const [id, user] of Object.entries(users)) {
+    if (String(user?.username).toLowerCase() === wanted) return {id, username: user.username};
+  }
+  if (OBJECT_ID.test(respondent)) return {id: respondent, username: users[respondent]?.username};
+  const known = Object.values(users).map(user => user?.username).filter(Boolean);
+  throw new Error(`找不到该用户名：${respondent}${known.length ? `。已有对话：${known.join('、')}` : ''}`);
+}
+
+/**
+ * 读一段对话的完整往来（官方 messages/list）。纯 GET，不会把消息标记已读；
+ * 只保留呈现需要的字段——原回包每方都带整块 badge 数据，整段线程很容易超过 MCP 的结果上限。
+ */
+async function getMessageThread(options = {}) {
+  if (!options.respondent) throw new Error('读对话需要对方用户名或 id');
+  const {api} = await client.context(options);
+  const index = await api.userMessagesIndex();
+  const {id, username} = resolveRespondent(index, options.respondent);
+  const data = await api.userMessagesList(id);
+  const messages = (data?.messages || []).map(item => ({
+    date: item.date,
+    type: item.type,
+    text: item.text,
+    unread: Boolean(item.unread),
+  }));
+  return {respondent: {id, username: username ?? null}, count: messages.length, messages};
+}
+
 function getStatus(options = {}) {
   const {target, config, shard} = client.resolveTarget(options);
   try {
@@ -327,6 +364,7 @@ module.exports = {
   getCode,
   getMarketOrders,
   getMemory,
+  getMessageThread,
   getMessages,
   getRoom,
   getRoomHistory,

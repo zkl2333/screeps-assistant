@@ -15,6 +15,10 @@
 - `status` 补成 CLI 命令，与 MCP 对齐；
 - MCP 补齐：查询命令收进 `src/commands.js` 命令表，CLI 和 MCP 都从它生成，工具名统一为 `screeps_<命令名>`，参数名用 CLI flag 的 camelCase 形式；`pick` / `filter` / `fields` 三个输出选项在所有工具上通用；`logs` 在 MCP 里封顶 60 秒。
 
+### 已完成（2026-11-09）
+
+- `messages <用户名或 id>`：读一段对话的完整往来（`userMessagesList`）。用户名用索引自带的 users 表解析，之前只能绕过本工具调上游 CLI；输出裁到 `date/type/text/unread`（原回包每方都带整块 badge，整段线程很容易超 MCP 结果上限）。纯 GET，不标已读。
+
 ## 待做
 
 ### 1. 分块上传长表达式与 `--arg` 传参

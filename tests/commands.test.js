@@ -55,4 +55,10 @@ assert.deepEqual(parseArgs(['summary', '--branch', 'default']), {_: [], branch: 
 assert.equal(COMMAND_BY_NAME.summary.params.branch.type, 'string');
 assert.equal(COMMAND_BY_NAME.code.params.branch.type, 'string');
 
+// messages 不带参数看索引，带用户名看整段对话；respondent 是可选位置参数。
+assert.deepEqual(parseArgs(['messages', 'squisher']), {_: ['squisher'], command: 'messages'});
+assert.deepEqual(parseArgs(['messages']), {_: [], command: 'messages'});
+assert.equal(COMMAND_BY_NAME.messages.params.respondent.positional, true);
+assert.notEqual(COMMAND_BY_NAME.messages.params.respondent.required, true);
+
 console.log('命令表测试通过');

@@ -167,6 +167,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
    | `userCodeGet` | `code` |
    | `gameMarketMyOrders` | `market` |
    | `userMessagesIndex`、`userMessagesUnreadCount` | `messages` |
+   | `userMessagesList`（某段对话全文） | `messages <用户名或 id>` |
    | `gameShardsInfo` | `shards` |
    | `gameRoomStatus`、`gameRoomTerrainUnencoded` | `map` |
 
@@ -176,7 +177,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
    npx --no-install screeps-api call <method> ...
    ```
 
-   常用的未封装只读方法：市场 `gameMarketOrdersIndex`、`gameMarketOrders`、`gameMarketStats`、`userMoneyHistory`；地图 `gameMapStats`、`gameRoomTerrain`、`gameRoomDecorations`；消息 `userMessagesList`；实验数据 `experimentalPvp`、`experimentalNukes`、`warpathBattles`。
+   常用的未封装只读方法：市场 `gameMarketOrdersIndex`、`gameMarketOrders`、`gameMarketStats`、`userMoneyHistory`；地图 `gameMapStats`、`gameRoomTerrain`、`gameRoomDecorations`；实验数据 `experimentalPvp`、`experimentalNukes`、`warpathBattles`。
 
    上游 CLI 要在本仓库目录下运行才能找到 `.screeps.yml`，用 `--server <名字>` 选服务器块（默认 `main`），只用服务器块自身的 token，不认本工具的 `accounts` 和目标覆盖字段。房间和 shard 应显式传入。`gameMapStats` 的 `rooms` 是逗号分隔的房间名列表，`stat` 另外支持 `owner0` 和 `claim0`；`resource` 使用 `screeps-api` 的 `MarketResources` 值；PVP/Warpath 接口的 interval 是独立的 tick 参数。完整命令以 `npx --no-install screeps-api --help` 为准。
 

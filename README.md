@@ -118,6 +118,10 @@ node bin/screeps-assistant.js code --target main --branch main
 node bin/screeps-assistant.js market --target main --shard shard2
 node bin/screeps-assistant.js messages --target main
 
+# 某段对话的完整往来（用户名或用户 id 都行；纯读，不会标记已读）
+node bin/screeps-assistant.js messages squisher --target main
+node bin/screeps-assistant.js messages squisher --filter type=in --fields date,text --target main
+
 # 环境概况（赛季能力、反应堆支持、世界尺寸、游戏时间）
 node bin/screeps-assistant.js world --target season
 

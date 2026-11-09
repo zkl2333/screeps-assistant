@@ -111,8 +111,11 @@ const COMMAND_TABLE = [
   },
   {
     name: 'messages',
-    description: '游戏内消息未读数与消息索引。',
-    run: options => queries.getMessages(options),
+    description: '不带参数：游戏内消息未读数与消息索引；带对方用户名（或用户 id）：读该对话的完整往来。纯读，不会把消息标记为已读。',
+    params: {
+      respondent: {type: 'string', positional: true, description: '对话对方：用户名，或用户 id'},
+    },
+    run: options => (options.respondent ? queries.getMessageThread(options) : queries.getMessages(options)),
   },
   {
     name: 'shards',

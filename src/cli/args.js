@@ -157,7 +157,7 @@ function helpText() {
   segment --id <id,...>    读 Memory Segment
   console                  执行游戏内表达式（见下）
   code [--branch <分支>]   线上代码模块列表
-  market / messages        己方市场挂单 / 消息索引
+  market / messages        己方市场挂单 / 消息索引（messages <用户名> 读该对话全文）
   shards / world           分片信息 / 环境概况
   map                      地图分析：--room、--rooms、--around --radius 或 --all
   status                   检查目标和本地凭证配置（不联网）
