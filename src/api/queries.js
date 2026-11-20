@@ -486,10 +486,129 @@ async function getCode(options = {}) {
   return {branch: code.branch, modules: Object.keys(modules)};
 }
 
-/** 己方市场挂单。 */
+/** 汇总某资源在当前分片的市场盘口与近期成交统计。 */
+function summarizeMarketOrders(orders = [], stats = [], {resource, limit = 5} = {}) {
+  const maxRows = Math.max(1, Number(limit) || 5);
+  const active = orders.filter(o => (o?.remainingAmount ?? o?.amount ?? 0) > 0);
+  const buys = active
+    .filter(o => o.type === 'buy')
+    .sort((a, b) => b.price - a.price)
+    .map(o => ({id: o._id, roomName: o.roomName, price: o.price, remaining: o.remainingAmount ?? o.amount}));
+  const sells = active
+    .filter(o => o.type === 'sell')
+    .sort((a, b) => a.price - b.price)
+    .map(o => ({id: o._id, roomName: o.roomName, price: o.price, remaining: o.remainingAmount ?? o.amount}));
+  const bestBuy = buys.length ? buys[0].price : null;
+  const bestSell = sells.length ? sells[0].price : null;
+  const spread = bestBuy !== null && bestSell !== null ? Math.round((bestSell - bestBuy) * 1000) / 1000 : null;
+  const buyVolume = buys.reduce((s, o) => s + o.remaining, 0);
+  const sellVolume = sells.reduce((s, o) => s + o.remaining, 0);
+  const recentStats = stats.slice(-7).map(s => ({
+    date: s.date,
+    avgPrice: s.avgPrice,
+    volume: s.volume,
+    stddevPrice: s.stddevPrice,
+  }));
+  return {
+    resource,
+    bestBuy,
+    bestSell,
+    spread,
+    buyOrders: buys.length,
+    sellOrders: sells.length,
+    buyVolume,
+    sellVolume,
+    topBuys: buys.slice(0, maxRows),
+    topSells: sells.slice(0, maxRows),
+    recentStats,
+  };
+}
+
+/** 己方市场挂单；传 resource 查单品盘口摘要；传 index 查全服有挂单的资源列表。 */
 async function getMarketOrders(options = {}) {
   const {api, shard} = await client.context(options);
+  if (options.index) {
+    const res = await api.gameMarketOrdersIndex(shard);
+    const resources = (res?.list || [])
+      .map(item => ({resource: item._id, count: item.count}))
+      .sort((a, b) => b.count - a.count);
+    return {shard, resources};
+  }
+  if (options.resource) {
+    const [ordersRes, statsRes] = await Promise.all([
+      api.gameMarketOrders(options.resource, shard),
+      attempt(() => api.gameMarketStats(options.resource, shard)).catch(() => null),
+    ]);
+    return {
+      shard,
+      ...summarizeMarketOrders(ordersRes?.list || [], statsRes?.stats || [], {
+        resource: options.resource,
+        limit: options.limit,
+      }),
+    };
+  }
   return {shard, orders: await api.gameMarketMyOrders(shard)};
+}
+
+/** 格式化 PVP 冲突房间数据，按最近交火时间降序排列。 */
+function formatPvpData(pvpResponse = {}, {shard, allShards = false} = {}) {
+  const shardMap = pvpResponse.shards || pvpResponse || {};
+  const rooms = [];
+  for (const [shardName, info] of Object.entries(shardMap)) {
+    if (!allShards && shard && shardName !== shard) continue;
+    const shardTime = info?.time;
+    for (const r of info?.rooms || []) {
+      rooms.push({
+        shard: shardName,
+        room: r._id,
+        lastPvpTime: r.lastPvpTime,
+        ticksAgo: shardTime != null && r.lastPvpTime != null ? shardTime - r.lastPvpTime : null,
+      });
+    }
+  }
+  rooms.sort((a, b) => (b.lastPvpTime || 0) - (a.lastPvpTime || 0));
+  return {shard: allShards ? 'all' : shard, count: rooms.length, rooms};
+}
+
+async function getPvp(options = {}) {
+  const interval = options.interval === undefined ? 100 : parseTick(options.interval, '--interval');
+  const {api, shard} = await client.context(options);
+  const res = await api.experimentalPvp(interval);
+  return {interval, ...formatPvpData(res, {shard, allShards: Boolean(options.allShards)})};
+}
+
+/** 格式化核弹发射与落地倒计时数据，按落地时间升序排列。 */
+function formatNukesData(nukesResponse = {}, {shard, allShards = false, gameTimeByShard = {}} = {}) {
+  const shardMap = nukesResponse.shards || nukesResponse || {};
+  const nukes = [];
+  for (const [shardName, list] of Object.entries(shardMap)) {
+    if (!allShards && shard && shardName !== shard) continue;
+    const nowTick = gameTimeByShard[shardName];
+    for (const n of Array.isArray(list) ? list : []) {
+      nukes.push({
+        shard: shardName,
+        id: n._id,
+        room: n.room,
+        launchRoomName: n.launchRoomName,
+        x: n.x,
+        y: n.y,
+        landTime: n.landTime,
+        ticksRemaining: nowTick != null && n.landTime != null ? n.landTime - nowTick : null,
+      });
+    }
+  }
+  nukes.sort((a, b) => (a.landTime || 0) - (b.landTime || 0));
+  return {shard: allShards ? 'all' : shard, count: nukes.length, nukes};
+}
+
+async function getNukes(options = {}) {
+  const {api, shard} = await client.context(options);
+  const [res, time] = await Promise.all([
+    api.experimentalNukes(),
+    attempt(() => api.gameTime(shard)).catch(() => null),
+  ]);
+  const gameTimeByShard = time?.time != null ? {[shard]: time.time} : {};
+  return formatNukesData(res, {shard, allShards: Boolean(options.allShards), gameTimeByShard});
 }
 
 /** 未读数与消息索引。 */
@@ -553,6 +672,8 @@ module.exports = {
   estimateTick,
   fetchHistoryChunk,
   formatLocalTime,
+  formatNukesData,
+  formatPvpData,
   formatRoomStats,
   getAccount,
   getCode,
@@ -561,6 +682,8 @@ module.exports = {
   getMemory,
   getMessageThread,
   getMessages,
+  getNukes,
+  getPvp,
   getRoom,
   getRoomHistory,
   getRoomObjects,
@@ -572,6 +695,7 @@ module.exports = {
   memoryStats,
   readSummary,
   resolveUsernames,
+  summarizeMarketOrders,
   verifyCodeModules,
   withUsernames,
 };

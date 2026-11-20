@@ -617,6 +617,53 @@ const {applyOutputOptions} = require('../src/cli/output');
     }
     client.context = mockContext();
 
+    // summarizeMarketOrders：过滤零剩余单、排序买卖盘、算价差与成交统计
+    {
+      const quote = queries.summarizeMarketOrders([
+        {_id: 'b1', type: 'buy', price: 10, remainingAmount: 100, roomName: 'W1N1'},
+        {_id: 'b2', type: 'buy', price: 12.5, remainingAmount: 200, roomName: 'W2N2'},
+        {_id: 'b0', type: 'buy', price: 99, remainingAmount: 0, roomName: 'W3N3'},
+        {_id: 's1', type: 'sell', price: 15, remainingAmount: 50, roomName: 'E1N1'},
+        {_id: 's2', type: 'sell', price: 14, remainingAmount: 80, roomName: 'E2N2'},
+      ], [
+        {date: '2026-11-19', avgPrice: 13.2, volume: 5000, stddevPrice: 0.4},
+      ], {resource: 'X', limit: 1});
+      assert.equal(quote.bestBuy, 12.5);
+      assert.equal(quote.bestSell, 14);
+      assert.equal(quote.spread, 1.5);
+      assert.equal(quote.buyVolume, 300);
+      assert.equal(quote.sellVolume, 130);
+      assert.equal(quote.topBuys.length, 1);
+      assert.equal(quote.topSells[0].id, 's2');
+      assert.equal(quote.recentStats.length, 1);
+    }
+
+    // formatPvpData / formatNukesData：分片过滤、排序与时间差计算
+    {
+      const pvp = queries.formatPvpData({
+        shards: {
+          shard2: {time: 1000, rooms: [{_id: 'W1N1', lastPvpTime: 950}, {_id: 'W2N2', lastPvpTime: 990}]},
+          shard0: {time: 2000, rooms: [{_id: 'E1N1', lastPvpTime: 1995}]},
+        },
+      }, {shard: 'shard2'});
+      assert.equal(pvp.count, 2);
+      assert.deepEqual(pvp.rooms.map(r => r.room), ['W2N2', 'W1N1']);
+      assert.equal(pvp.rooms[0].ticksAgo, 10);
+
+      const nukes = queries.formatNukesData({
+        shards: {
+          shard2: [
+            {_id: 'n1', room: 'W5N5', launchRoomName: 'W1N1', x: 10, y: 20, landTime: 1500},
+            {_id: 'n2', room: 'W6N6', launchRoomName: 'W2N2', x: 15, y: 25, landTime: 1200},
+          ],
+          shard1: [{_id: 'n3', room: 'E1N1', launchRoomName: 'E2N2', x: 5, y: 5, landTime: 900}],
+        },
+      }, {shard: 'shard2', gameTimeByShard: {shard2: 1000}});
+      assert.equal(nukes.count, 2);
+      assert.deepEqual(nukes.nukes.map(n => n.id), ['n2', 'n1']);
+      assert.equal(nukes.nukes[0].ticksRemaining, 200);
+    }
+
     // buildIncidentTimeline：过滤噪声字段，按 tick 合并 history 与 overview 损失
     {
       const tl = queries.buildIncidentTimeline({

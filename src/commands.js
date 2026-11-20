@@ -130,8 +130,30 @@ const COMMAND_TABLE = [
   },
   {
     name: 'market',
-    description: '己方市场挂单。',
+    description: '市场查询：默认返回己方挂单；传 resource 看单品盘口摘要与近期成交；传 index 看全服活跃资源。',
+    params: {
+      resource: {type: 'string', description: '资源名，例如 energy、X、ops、pixel'},
+      index: {type: 'boolean', description: '只看当前分片有挂单的资源种类与挂单数'},
+      limit: {type: 'integer', min: 1, max: 50, description: '买卖盘各展示前几档，默认 5'},
+    },
     run: options => queries.getMarketOrders(options),
+  },
+  {
+    name: 'pvp',
+    description: '最近 PVP 交火房间（experimentalPvp），按最近交火时间降序并附带距今 tick。',
+    params: {
+      interval: {type: 'integer', min: 1, description: '回溯 tick 窗口，默认 100'},
+      allShards: {type: 'boolean', description: '看所有分片，而不只是当前分片'},
+    },
+    run: options => queries.getPvp(options),
+  },
+  {
+    name: 'nukes',
+    description: '正在飞行的核弹列表（experimentalNukes），按落地时间升序并附带剩余 tick。',
+    params: {
+      allShards: {type: 'boolean', description: '看所有分片，而不只是当前分片'},
+    },
+    run: options => queries.getNukes(options),
   },
   {
     name: 'messages',
