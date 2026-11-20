@@ -65,6 +65,63 @@ function terrainAscii(terrain) {
   return grid.map(row => row.join('')).join('\n');
 }
 
+const ROOM_ASCII_LEGEND = 'S=Spawn T=Tower R=Rampart W=Wall C=Controller B=Storage X=Terminal L=Lab F=Factory e=Extension ,=Road $=Source M=Mineral O=Portal +=Site c=己方Creep E=敌方Creep P=PowerCreep';
+
+const OBJECT_SYMBOL_PRIORITY = {
+  road: [1, ','],
+  container: [2, 'u'],
+  constructedWall: [3, 'W'],
+  rampart: [4, 'R'],
+  source: [5, '$'],
+  mineral: [5, 'M'],
+  portal: [5, 'O'],
+  controller: [6, 'C'],
+  storage: [6, 'B'],
+  terminal: [6, 'X'],
+  lab: [6, 'L'],
+  factory: [6, 'F'],
+  extension: [6, 'e'],
+  link: [6, 'k'],
+  observer: [6, 'b'],
+  nuker: [6, 'N'],
+  powerSpawn: [6, 'p'],
+  extractor: [6, 'x'],
+  tower: [7, 'T'],
+  spawn: [8, 'S'],
+  constructionSite: [9, '+'],
+};
+
+/** 把地形与房间对象叠加渲染为 50x50 ASCII 战局图。 */
+function roomAscii(terrain, objects = [], userId) {
+  const grid = Array.from({length: 50}, () => Array(50).fill('.'));
+  const prio = Array.from({length: 50}, () => Array(50).fill(0));
+  for (const cell of terrainCells(terrain)) {
+    grid[cell.y][cell.x] = cell.type === 'wall' ? '#' : cell.type === 'swamp' ? '~' : '?';
+  }
+  const paint = (x, y, p, ch) => {
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || x > 49 || y < 0 || y > 49) return;
+    if (p >= prio[y][x]) {
+      prio[y][x] = p;
+      grid[y][x] = ch;
+    }
+  };
+  for (const item of objects) {
+    if (!item) continue;
+    if (item.type === 'creep') {
+      const own = userId !== undefined && item.user === userId;
+      paint(item.x, item.y, own ? 10 : 11, own ? 'c' : 'E');
+      continue;
+    }
+    if (item.type === 'powerCreep') {
+      paint(item.x, item.y, 12, 'P');
+      continue;
+    }
+    const spec = OBJECT_SYMBOL_PRIORITY[item.type];
+    if (spec) paint(item.x, item.y, spec[0], spec[1]);
+  }
+  return grid.map(row => row.join('')).join('\n');
+}
+
 /** 从 version() 返回值提取服务器能力：是否赛季服、自定义对象、赛季资源类型、是否有反应堆。 */
 function featureMap(version = {}) {
   // 赛季服的 features 在 serverData.features，旧版服务器在顶层 features
@@ -147,4 +204,4 @@ function summarizeResults(results) {
   };
 }
 
-module.exports = {classifyObjects, featureMap, formatRoomName, getNeighborRooms, parseRoomName, summarizeResults, summarizeRoom, terrainAscii, terrainCells, terrainSummary};
+module.exports = {ROOM_ASCII_LEGEND, classifyObjects, featureMap, formatRoomName, getNeighborRooms, parseRoomName, roomAscii, summarizeResults, summarizeRoom, terrainAscii, terrainCells, terrainSummary};

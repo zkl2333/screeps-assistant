@@ -44,6 +44,7 @@ const COMMAND_TABLE = [
     params: {
       room: ROOM,
       objects: {type: 'boolean', description: '返回全部原样对象，而不是摘要'},
+      ascii: {type: 'boolean', description: '输出地形 + 建筑 + 敌我 creep 叠加的 50x50 ASCII 战局图'},
     },
     run: options => (options.objects ? queries.getRoomObjects(options) : queries.getRoom(options)),
   },
@@ -86,6 +87,7 @@ const COMMAND_TABLE = [
     description: '按路径读 Memory，返回解码后的值；省略路径读整个 Memory。',
     params: {
       path: {type: 'string', positional: true, mcpRequired: true, description: 'Memory 路径，例如 rooms.W1N1'},
+      stats: {type: 'boolean', description: '统计各子键 JSON 字节占用排行（外部计算，0 游戏内 CPU）'},
     },
     run: options => queries.getMemory(options),
   },

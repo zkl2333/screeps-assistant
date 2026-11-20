@@ -7,6 +7,7 @@ const {
   formatRoomName,
   getNeighborRooms,
   parseRoomName,
+  roomAscii,
   summarizeResults,
   summarizeRoom,
   terrainAscii,
@@ -79,6 +80,15 @@ assert.equal(room.status, 'normal');
 assert.equal(room.sources, 1);
 assert.equal(room.seasonResourceAmount, 3000);
 assert.deepEqual(room.reactors, [{x: 9, y: 24, owner: 'me', store: {T: 100}, launchTime: null}]);
+
+const battleAscii = roomAscii([{x: 0, y: 0, type: 'wall'}], [
+  {type: 'road', x: 1, y: 0},
+  {type: 'rampart', x: 1, y: 0},
+  {type: 'spawn', x: 2, y: 0, user: 'me'},
+  {type: 'creep', x: 3, y: 0, user: 'me'},
+  {type: 'creep', x: 4, y: 0, user: 'enemy'},
+], 'me');
+assert.equal(battleAscii.split('\n')[0].slice(0, 6), '#RScE.');
 
 // 范围汇总：失败的房间只计入 failed
 const aggregated = summarizeResults([

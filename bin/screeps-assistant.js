@@ -325,6 +325,13 @@ async function main() {
     }
     return printResult(entries, args);
   }
+  if (args.command === 'room' && args.ascii && !args.objects) {
+    const res = await command.run(opts);
+    console.log(`=== ${res.room} (${res.shard} @ ${res.gameTime ?? '?'}) ===`);
+    console.log(res.ascii);
+    console.log(res.legend);
+    return;
+  }
   if (args.command === 'map' && args.ascii) {
     const scan = await command.run({...opts, summaryOnly: false});
     for (const item of scan.results) {

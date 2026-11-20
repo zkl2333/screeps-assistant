@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const client = require('./client');
+const {ROOM_ASCII_LEGEND, roomAscii} = require('../map/analysis');
 const {HISTORY_CHUNK, chunkBase, replayChanges, replayState} = require('./replay');
 const {objectSummary, readSummary} = client;
 
@@ -36,11 +37,22 @@ async function listRooms(options = {}) {
 async function getRoom(options = {}) {
   if (!options.room) throw new Error('room 查询需要 room');
   const {api, account, target, shard} = await client.context(options);
-  const [data, time] = await Promise.all([
+  const [data, time, terrainData] = await Promise.all([
     api.gameRoomObjects(options.room, shard),
     attempt(() => api.gameTime(shard)),
+    options.ascii ? api.gameRoomTerrain(options.room, 1, shard) : Promise.resolve(null),
   ]);
   const gameTime = time?.time;
+  if (options.ascii) {
+    return {
+      target,
+      shard,
+      room: options.room,
+      gameTime,
+      ascii: roomAscii(terrainData?.terrain || [], data.objects || [], account._id),
+      legend: ROOM_ASCII_LEGEND,
+    };
+  }
   return {
     target,
     shard,
@@ -291,11 +303,44 @@ async function getRoomHistory(options = {}) {
   return withUsernames(result, await resolveUsernames(api, result.map(item => item.user)));
 }
 
-/** 按路径读 Memory，返回解码后的值；省略路径读整个 Memory。 */
+const MEMORY_LIMIT_BYTES = 2 * 1024 * 1024;
+
+function jsonBytes(value) {
+  const serialized = JSON.stringify(value);
+  return serialized === undefined ? 0 : Buffer.byteLength(serialized, 'utf8');
+}
+
+/** 统计 Memory 值及其子键的 JSON 字节占用排行（0 游戏内 CPU）。 */
+function memoryStats(value, {limit = 15} = {}) {
+  const totalBytes = jsonBytes(value);
+  const usagePct = Math.round((totalBytes / MEMORY_LIMIT_BYTES) * 10000) / 100;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {totalBytes, limitBytes: MEMORY_LIMIT_BYTES, usagePct, keys: []};
+  }
+  const keys = Object.entries(value).map(([key, sub]) => {
+    const bytes = jsonBytes(sub);
+    const pct = totalBytes > 0 ? Math.round((bytes / totalBytes) * 10000) / 100 : 0;
+    const item = {key, bytes, pct};
+    if (sub && typeof sub === 'object' && !Array.isArray(sub)) {
+      item.topChildren = Object.entries(sub)
+        .map(([ck, cv]) => ({key: ck, bytes: jsonBytes(cv)}))
+        .sort((a, b) => b.bytes - a.bytes)
+        .slice(0, 5);
+    }
+    return item;
+  }).sort((a, b) => b.bytes - a.bytes).slice(0, limit);
+  return {totalBytes, limitBytes: MEMORY_LIMIT_BYTES, usagePct, keys};
+}
+
+/** 按路径读 Memory，返回解码后的值；省略路径读整个 Memory；传 stats 时返回占用排行。 */
 async function getMemory(options = {}) {
   const {api, shard} = await client.context(options);
   const result = await api.userMemoryGet(options.path || '', shard);
-  return decodeMemoryValue(result?.data);
+  const decoded = decodeMemoryValue(result?.data);
+  if (options.stats) {
+    return {path: options.path || '', ...memoryStats(decoded)};
+  }
+  return decoded;
 }
 
 async function getSegment(options = {}) {
@@ -470,6 +515,7 @@ module.exports = {
   getStatus,
   listRooms,
   listShards,
+  memoryStats,
   readSummary,
   resolveUsernames,
   verifyCodeModules,

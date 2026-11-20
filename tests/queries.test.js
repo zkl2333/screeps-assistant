@@ -617,6 +617,19 @@ const {applyOutputOptions} = require('../src/cli/output');
     }
     client.context = mockContext();
 
+    // memoryStats：按字节降序统计一级/二级占用
+    {
+      const stats = queries.memoryStats({
+        small: 1,
+        rooms: {W1N1: {a: 'x'.repeat(200)}, W2N2: {b: 'y'.repeat(10)}},
+        creeps: {c1: 'z'.repeat(50)},
+      });
+      assert.equal(stats.keys[0].key, 'rooms');
+      assert.equal(stats.keys[0].topChildren[0].key, 'W1N1');
+      assert.ok(stats.totalBytes > 250);
+      assert.ok(stats.usagePct >= 0);
+    }
+
     // code verify：比对本地文件/目录与线上模块（长度 + SHA-256）
     {
       const tmpDir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'sa-code-verify-'));
