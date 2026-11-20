@@ -89,6 +89,29 @@ assert.deepEqual(enemyRoom.spawning, []);
 assert.equal(enemyRoom.ownCreeps.length, 0);
 assert.equal(enemyRoom.hostileCreeps.length, 1);
 
+// 加深摘要：剩余寿命 ttl、玩家名、建筑血量统计、能量与矿源。
+const richRoom = objectSummary([
+  {type: 'controller', level: 5, x: 10, y: 10, user: 'me', downgradeTime: 15000},
+  {type: 'spawn', user: 'me', hits: 5000, hitsMax: 5000, store: {energy: 300}, storeCapacityResource: {energy: 300}},
+  {type: 'extension', user: 'me', hits: 500, hitsMax: 500, store: {energy: 50}, storeCapacityResource: {energy: 50}},
+  {type: 'rampart', user: 'me', hits: 12000, hitsMax: 1000000},
+  {type: 'rampart', user: 'me', hits: 8000, hitsMax: 1000000},
+  {type: 'source', _id: 's1', x: 5, y: 6, energy: 2800, energyCapacity: 3000},
+  {type: 'mineral', mineralType: 'O', mineralAmount: 42000},
+  {type: 'creep', user: 'me', name: 'h1', x: 3, y: 4, hits: 200, hitsMax: 200, ageTime: 11200, body: [{type: 'work'}]},
+  {type: 'creep', user: 'enemy', name: 'e1', x: 8, y: 9, hits: 100, hitsMax: 300, ageTime: 10500, body: [{type: 'attack'}]},
+], 'me', {users: {me: {username: 'MeUser'}, enemy: {username: 'BadGuy'}}, gameTime: 10000});
+assert.equal(richRoom.controller.ownerName, 'MeUser');
+assert.equal(richRoom.controller.ticksToDowngrade, 5000);
+assert.equal(richRoom.energyAvailable, 350);
+assert.equal(richRoom.energyCapacityAvailable, 350);
+assert.deepEqual(richRoom.structures.rampart, {count: 2, minHits: 8000, totalHits: 20000, totalMaxHits: 2000000});
+assert.deepEqual(richRoom.sources, [{id: 's1', x: 5, y: 6, energy: 2800, energyCapacity: 3000}]);
+assert.deepEqual(richRoom.mineral, {type: 'O', amount: 42000});
+assert.equal(richRoom.ownCreeps[0].ttl, 1200);
+assert.equal(richRoom.hostileCreeps[0].username, 'BadGuy');
+assert.equal(richRoom.hostileCreeps[0].ttl, 500);
+
 function writeFixture(contents) {
   const file = path.join(os.tmpdir(), `screeps-assistant-config-${Date.now()}-${Math.random().toString(16).slice(2)}.yml`);
   fs.writeFileSync(file, contents);

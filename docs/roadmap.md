@@ -26,15 +26,13 @@
 - **已完成**：单次 `console`（CLI 与 MCP `screeps_console`）已支持自动中转超长表达式（`Memory.__sa_boot_<id>` 单次引导，被清理时自动降级 `global.__sa_b` 分片）。
 - **待做**：`--arg 名=值`（可重复；值按 JSON 解析，不行就当字符串）把参数注入表达式作用域，同一个探针文件可以复用。
 
-### 2. `room` 摘要加深
+### 2. `room` 摘要加深（已完成 2026-11-20）
 
-- **现状**：`room <房间>` 摘要里 creep 的 `role`、`squadName` 恒为空，因为这两项是 Bot 写在 Memory 里的自定义字段，房间对象本身不带；对“房间里现在什么样”的信息也偏少。
-- **要做**：去掉恒为空的字段，或改成显式指定 Memory 路径来补；加 creep 剩余寿命（`ageTime` 减当前 tick）、建筑存量和血量概览、敌方 creep 的玩家名；`--ascii` 地图叠加结构和 creep。
+- **已实现**：去掉恒为空的 `role`/`squadName`，补齐己方/敌方 creep `ttl`、`hits`/`hitsMax`、敌方 `username`、`controller.ownerName` 与 `ticksToDowngrade`、`energyAvailable`/`energyCapacityAvailable`、`sources`/`mineral` 与 `structures` 血量/数量概览。
 
-### 3. `code verify --dist <文件>`
+### 3. `code --verify <路径>`（已完成 2026-11-20）
 
-- **现状**：`code` 只能列出线上模块名，没法确认线上跑的就是本地这份构建。
-- **要做**：读线上模块内容，和本地构建产物比对（长度加哈希），输出一致或不一致及差异概要。只读，不写线上。
+- **已实现**：支持 `--verify <文件或目录>`，下载线上模块与本地构建产物逐一比对字节长度和 SHA-256 哈希（CLI 与 MCP `screeps_code` 同步支持）。只读，不写线上。
 
 ### 4. MCP 补齐（已完成 2026-11-07，剩常驻 socket）
 

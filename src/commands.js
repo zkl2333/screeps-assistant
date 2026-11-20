@@ -99,9 +99,10 @@ const COMMAND_TABLE = [
   },
   {
     name: 'code',
-    description: '线上代码模块列表。',
+    description: '线上代码模块列表；传 verify 时可与本地构建产物逐模块比对大小与 SHA-256 哈希。',
     params: {
       branch: {type: 'string', description: '代码分支，省略时用目标配置的分支'},
+      verify: {type: 'string', description: '本地构建产物文件或目录路径（例如 dist/ 或 dist/main.js）'},
     },
     run: options => queries.getCode(options),
   },

@@ -616,6 +616,37 @@ const {applyOutputOptions} = require('../src/cli/output');
       assert.equal(contexts, 1);
     }
     client.context = mockContext();
+
+    // code verify：比对本地文件/目录与线上模块（长度 + SHA-256）
+    {
+      const tmpDir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'sa-code-verify-'));
+      try {
+        const mainFile = require('node:path').join(tmpDir, 'main.js');
+        const mapFile = require('node:path').join(tmpDir, 'main.js.map');
+        require('node:fs').writeFileSync(mainFile, 'module.exports.loop = () => {};');
+        require('node:fs').writeFileSync(mapFile, '{"version":3}');
+
+        const okRes = queries.verifyCodeModules({
+          main: 'module.exports.loop = () => {};',
+          'main.js.map': '{"version":3}',
+          extra: 'ignored',
+        }, tmpDir);
+        assert.equal(okRes.ok, true);
+        assert.equal(okRes.matched.length, 2);
+        assert.equal(okRes.mismatched.length, 0);
+        assert.equal(okRes.missingRemote.length, 0);
+        assert.deepEqual(okRes.extraRemote, ['extra']);
+
+        const diffRes = queries.verifyCodeModules({main: 'different'}, mainFile);
+        assert.equal(diffRes.ok, false);
+        assert.equal(diffRes.mismatched.length, 1);
+        assert.equal(diffRes.mismatched[0].module, 'main');
+
+        assert.throws(() => queries.verifyCodeModules({}, require('node:path').join(tmpDir, 'nope.js')), /本地路径不存在/);
+      } finally {
+        require('node:fs').rmSync(tmpDir, {recursive: true, force: true});
+      }
+    }
   } finally {
     client.context = originalContext;
     client.resolveTarget = originalResolveTarget;

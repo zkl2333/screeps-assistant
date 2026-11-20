@@ -1,5 +1,8 @@
 'use strict';
 
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const client = require('./client');
 const {HISTORY_CHUNK, chunkBase, replayChanges, replayState} = require('./replay');
 const {objectSummary, readSummary} = client;
@@ -33,8 +36,18 @@ async function listRooms(options = {}) {
 async function getRoom(options = {}) {
   if (!options.room) throw new Error('room 查询需要 room');
   const {api, account, target, shard} = await client.context(options);
-  const data = await api.gameRoomObjects(options.room, shard);
-  return {target, shard, room: options.room, summary: objectSummary(data.objects || [], account._id)};
+  const [data, time] = await Promise.all([
+    api.gameRoomObjects(options.room, shard),
+    attempt(() => api.gameTime(shard)),
+  ]);
+  const gameTime = time?.time;
+  return {
+    target,
+    shard,
+    room: options.room,
+    gameTime,
+    summary: objectSummary(data.objects || [], account._id, {users: data.users, gameTime}),
+  };
 }
 
 /** 官方原样对象；带 user 的对象按回包里的 users 表补上 username，便于按玩家过滤。 */
@@ -291,11 +304,89 @@ async function getSegment(options = {}) {
   return {target, shard, segments: await api.userMemorySegmentGet(options.id, shard)};
 }
 
-/** 线上代码模块列表；省略 branch 时用目标配置的代码分支。 */
+function sha256Hex(text) {
+  return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+/** 比对线上模块集合与本地文件或构建目录（只读）。 */
+function verifyCodeModules(remoteModules = {}, localPath) {
+  let stat;
+  try {
+    stat = fs.statSync(localPath);
+  } catch (error) {
+    if (error?.code === 'ENOENT') throw new Error(`本地路径不存在：${localPath}`);
+    throw error;
+  }
+
+  const files = [];
+  if (stat.isFile()) {
+    files.push({file: path.basename(localPath), fullPath: localPath});
+  } else if (stat.isDirectory()) {
+    for (const entry of fs.readdirSync(localPath, {withFileTypes: true})) {
+      if (!entry.isFile() || entry.name.startsWith('.')) continue;
+      files.push({file: entry.name, fullPath: path.join(localPath, entry.name)});
+    }
+    if (!files.length) throw new Error(`本地目录为空：${localPath}`);
+  } else {
+    throw new Error(`--verify 只支持文件或目录：${localPath}`);
+  }
+
+  const resolveModuleName = file => {
+    if (Object.hasOwn(remoteModules, file)) return file;
+    if (file.endsWith('.js')) return file.slice(0, -3);
+    return file;
+  };
+
+  const matched = [];
+  const mismatched = [];
+  const missingRemote = [];
+  const checkedRemote = new Set();
+
+  for (const {file, fullPath} of files) {
+    const moduleName = resolveModuleName(file);
+    const localContent = fs.readFileSync(fullPath, 'utf8');
+    const localBytes = Buffer.byteLength(localContent, 'utf8');
+    const localHash = sha256Hex(localContent);
+    if (!Object.hasOwn(remoteModules, moduleName)) {
+      missingRemote.push({module: moduleName, file, localBytes, localHash});
+      continue;
+    }
+    checkedRemote.add(moduleName);
+    const remoteContent = typeof remoteModules[moduleName] === 'string'
+      ? remoteModules[moduleName]
+      : JSON.stringify(remoteModules[moduleName]);
+    const remoteBytes = Buffer.byteLength(remoteContent, 'utf8');
+    const remoteHash = sha256Hex(remoteContent);
+    if (localHash === remoteHash) {
+      matched.push({module: moduleName, file, bytes: localBytes, sha256: localHash});
+    } else {
+      mismatched.push({module: moduleName, file, localBytes, remoteBytes, localHash, remoteHash});
+    }
+  }
+
+  const extraRemote = Object.keys(remoteModules).filter(name => !checkedRemote.has(name));
+  return {
+    ok: mismatched.length === 0 && missingRemote.length === 0,
+    matched,
+    mismatched,
+    missingRemote,
+    extraRemote,
+  };
+}
+
+/** 线上代码模块列表；传 verify 时与本地文件或构建目录逐模块比对大小和 SHA-256。 */
 async function getCode(options = {}) {
   const {api, config} = await client.context(options);
   const code = await api.userCodeGet(options.branch || config.codeBranch);
-  return {branch: code.branch, modules: Object.keys(code.modules || {})};
+  const modules = code.modules || {};
+  if (options.verify !== undefined) {
+    return {
+      branch: code.branch,
+      verifyPath: options.verify,
+      ...verifyCodeModules(modules, options.verify),
+    };
+  }
+  return {branch: code.branch, modules: Object.keys(modules)};
 }
 
 /** 己方市场挂单。 */
@@ -381,5 +472,6 @@ module.exports = {
   listShards,
   readSummary,
   resolveUsernames,
+  verifyCodeModules,
   withUsernames,
 };

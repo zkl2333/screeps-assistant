@@ -163,7 +163,7 @@ function accountSummary(account) {
  * - ownTowers / ownSpawns / ownLabs / ownFactories：仅当前账号拥有的数量；
  * - storageEnergy / terminalEnergy / spawning / constructionSites：仍为己方专用。
  */
-function objectSummary(objects, userId) {
+function objectSummary(objects, userId, {users = {}, gameTime} = {}) {
   const owned = objects.filter(item => item.user === userId);
   const countAll = type => objects.filter(item => item.type === type).length;
   const countOwn = type => owned.filter(item => item.type === type).length;
@@ -171,9 +171,50 @@ function objectSummary(objects, userId) {
   const storage = owned.find(item => item.type === 'storage');
   const terminal = owned.find(item => item.type === 'terminal');
   const creeps = objects.filter(item => item.type === 'creep');
+  const ttlOf = item => (item.ageTime != null && gameTime != null ? item.ageTime - gameTime : undefined);
+  const usernameOf = id => (id == null ? undefined : users[id]?.username);
+
+  const energyStructures = objects.filter(item => item.type === 'spawn' || item.type === 'extension');
+  const energyAvailable = energyStructures.reduce((sum, item) => sum + (item.store?.energy ?? item.energy ?? 0), 0);
+  const energyCapacityAvailable = energyStructures.reduce((sum, item) => sum + (item.storeCapacityResource?.energy ?? item.energyCapacity ?? 0), 0);
+
+  const structures = {};
+  for (const item of objects) {
+    if (item.hits === undefined && item.hitsMax === undefined) continue;
+    if (item.type === 'creep' || item.type === 'powerCreep') continue;
+    const entry = structures[item.type] || (structures[item.type] = {count: 0, minHits: null, totalHits: 0, totalMaxHits: 0});
+    entry.count += 1;
+    const hits = item.hits ?? 0;
+    const maxHits = item.hitsMax ?? 0;
+    entry.minHits = entry.minHits === null ? hits : Math.min(entry.minHits, hits);
+    entry.totalHits += hits;
+    entry.totalMaxHits += maxHits;
+  }
+
+  const sources = objects.filter(item => item.type === 'source').map(item => ({
+    id: item._id,
+    x: item.x,
+    y: item.y,
+    energy: item.energy,
+    energyCapacity: item.energyCapacity,
+  }));
+  const mineralObj = objects.find(item => item.type === 'mineral');
+  const mineral = mineralObj ? {type: mineralObj.mineralType, amount: mineralObj.mineralAmount} : null;
+
   return {
     rcl: controller?.level,
-    controller: controller ? {x: controller.x, y: controller.y, owner: controller.user, reservation: controller.reservation} : null,
+    controller: controller ? {
+      x: controller.x,
+      y: controller.y,
+      owner: controller.user,
+      ownerName: usernameOf(controller.user),
+      reservation: controller.reservation
+        ? {...controller.reservation, username: usernameOf(controller.reservation.user)}
+        : undefined,
+      ticksToDowngrade: controller.downgradeTime != null && gameTime != null ? controller.downgradeTime - gameTime : undefined,
+    } : null,
+    energyAvailable,
+    energyCapacityAvailable,
     spawns: countAll('spawn'),
     ownSpawns: countOwn('spawn'),
     spawning: owned.filter(item => item.type === 'spawn' && item.spawning).map(item => item.spawning.name),
@@ -186,9 +227,30 @@ function objectSummary(objects, userId) {
     factories: countAll('factory'),
     ownFactories: countOwn('factory'),
     constructionSites: objects.filter(item => item.type === 'constructionSite' && item.user === userId).length,
+    sources,
+    mineral,
+    structures,
     portals: objects.filter(item => item.type === 'portal').map(item => ({x: item.x, y: item.y, destination: item.destination})),
-    ownCreeps: creeps.filter(item => item.user === userId).map(item => ({name: item.name, x: item.x, y: item.y, role: item.role, squadName: item.squadName, body: item.body?.map(part => part.type || part)})),
-    hostileCreeps: creeps.filter(item => item.user !== userId && item.user != null).map(item => ({name: item.name, user: item.user, x: item.x, y: item.y, body: item.body?.map(part => part.type || part)})),
+    ownCreeps: creeps.filter(item => item.user === userId).map(item => ({
+      name: item.name,
+      x: item.x,
+      y: item.y,
+      hits: item.hits,
+      hitsMax: item.hitsMax,
+      ttl: ttlOf(item),
+      body: item.body?.map(part => part.type || part),
+    })),
+    hostileCreeps: creeps.filter(item => item.user !== userId && item.user != null).map(item => ({
+      name: item.name,
+      user: item.user,
+      username: usernameOf(item.user),
+      x: item.x,
+      y: item.y,
+      hits: item.hits,
+      hitsMax: item.hitsMax,
+      ttl: ttlOf(item),
+      body: item.body?.map(part => part.type || part),
+    })),
   };
 }
 
