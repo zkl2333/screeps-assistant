@@ -117,15 +117,16 @@ function assertSafeKey(key, label = 'key') {
 
 /**
  * 通过临时缓冲执行任意长度的 console 脚本。
- * - transport='memory'（默认）：先用 POST /api/user/memory 写入临时键，再用 1 次 console 调用 eval 后立即删除。
+ * - transport='auto'（默认）：优先 memory 中转（单次请求），若被 Bot 清理导致 missing Memory.* 则自动降级 chunk。
+ * - transport='memory'：先用 POST /api/user/memory 写入临时键，再用 1 次 console 调用 eval 后立即删除。
  * - transport='chunk'：纯 global 分片拼接，不触碰 Memory。
  */
 async function runLargeConsole(session, code, opts = {}) {
   if (!session || typeof session.run !== 'function') throw new TypeError('session 必须包含 run 方法');
   if (typeof code !== 'string' || !code.trim()) throw new TypeError('code 必须是非空字符串');
-  const transport = opts.transport || 'memory';
-  if (transport !== 'memory' && transport !== 'chunk') {
-    throw new TypeError(`不支持的 transport：${transport}（可选：memory, chunk）`);
+  const transport = opts.transport || 'auto';
+  if (transport !== 'auto' && transport !== 'memory' && transport !== 'chunk') {
+    throw new TypeError(`不支持的 transport：${transport}（可选：auto, memory, chunk）`);
   }
 
   // 若本身就能直接走常规包装通道，直接执行即可，省去额外请求。
@@ -134,27 +135,38 @@ async function runLargeConsole(session, code, opts = {}) {
     return {...res, transport: 'direct', chunks: 1};
   }
 
-  if (transport === 'memory') {
-    if (!session.api || typeof session.api.userMemorySet !== 'function') {
-      throw new Error('memory 中转模式需要 session.api.userMemorySet 方法');
+  const runViaChunk = async () => {
+    const {bufId, expressions} = buildChunkExpressions(code);
+    let lastResult = null;
+    for (const expr of expressions) {
+      lastResult = await session.run(expr, {timeoutMs: opts.timeoutMs, retries: opts.retries});
     }
-    if (code.length > MAX_MEMORY_RELAY_CHARS) {
-      throw new Error(`代码长度 ${code.length} 超过 /api/user/memory 上限 ${MAX_MEMORY_RELAY_CHARS}`);
-    }
-    const memoryKey = opts.memoryKey || DEFAULT_MEMORY_BOOT_KEY;
-    assertSafeKey(memoryKey, 'memoryKey');
-    await session.api.userMemorySet(memoryKey, code, session.shard);
-    const bootstrap = buildRelayBootstrapExpression(memoryKey);
-    const res = await session.run(bootstrap, {timeoutMs: opts.timeoutMs, retries: opts.retries ?? 0});
-    return {...res, transport: 'memory', chunks: 1, memoryKey};
+    return {...lastResult, transport: 'chunk', bufId, chunks: expressions.length};
+  };
+
+  if (transport === 'chunk') return runViaChunk();
+
+  if (!session.api || typeof session.api.userMemorySet !== 'function') {
+    if (transport === 'auto') return runViaChunk();
+    throw new Error('memory 中转模式需要 session.api.userMemorySet 方法');
+  }
+  if (code.length > MAX_MEMORY_RELAY_CHARS) {
+    throw new Error(`代码长度 ${code.length} 超过 /api/user/memory 上限 ${MAX_MEMORY_RELAY_CHARS}`);
   }
 
-  const {bufId, expressions} = buildChunkExpressions(code);
-  let lastResult = null;
-  for (const expr of expressions) {
-    lastResult = await session.run(expr, {timeoutMs: opts.timeoutMs, retries: opts.retries});
+  const memoryKey = opts.memoryKey || `${DEFAULT_MEMORY_BOOT_KEY}_${createRequestId()}`;
+  assertSafeKey(memoryKey, 'memoryKey');
+  await session.api.userMemorySet(memoryKey, code, session.shard);
+  const bootstrap = buildRelayBootstrapExpression(memoryKey);
+  try {
+    const res = await session.run(bootstrap, {timeoutMs: opts.timeoutMs, retries: opts.retries ?? 0});
+    return {...res, transport: 'memory', chunks: 1, memoryKey};
+  } catch (error) {
+    if (transport === 'auto' && /missing Memory\./.test(error?.message || '')) {
+      return runViaChunk();
+    }
+    throw error;
   }
-  return {...lastResult, transport: 'chunk', bufId, chunks: expressions.length};
 }
 
 /** 将通用辅助工具包或自定义脚本注入到游戏内 global.__sa 临时空间。 */
@@ -217,7 +229,7 @@ async function clearToolbox(session, opts = {}) {
   const bootKey = opts.bootKey || DEFAULT_MEMORY_BOOT_KEY;
   assertSafeKey(prefix, 'inbox prefix');
   assertSafeKey(bootKey, 'boot key');
-  const expr = `(function(g){if(g.__sa){delete g.__sa.t;delete g.__sa.v;delete g.__sa.q;}delete g.__sa_b;for(var k in Memory){if(k.indexOf("${prefix}")===0)delete Memory[k];}delete Memory["${bootKey}"];return{cleared:true,tick:Game.time};})(global)`;
+  const expr = `(function(g){if(g.__sa){delete g.__sa.t;delete g.__sa.v;delete g.__sa.q;}delete g.__sa_b;for(var k in Memory){if(k.indexOf("${prefix}")===0||k==="${bootKey}"||k.indexOf("${bootKey}_")===0)delete Memory[k];}return{cleared:true,tick:Game.time};})(global)`;
   return session.run(expr, {timeoutMs: opts.timeoutMs, retries: opts.retries ?? 0});
 }
 

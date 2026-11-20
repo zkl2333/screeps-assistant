@@ -118,17 +118,35 @@ function createMockSession() {
     assert.equal(memorySetCalls.length, 0);
   }
 
-  // 2. 长表达式走 memory 中转，执行后自动删除 __sa_boot。
+  // 2. 长表达式走 memory 中转（使用随机后缀键防并发覆盖），执行后自动删除。
   {
     const {session, memory, memorySetCalls, consoleCalls} = createMockSession();
     const longExpr = Array.from({length: 80}, (_, i) => `var n${i} = ${i};`).join('') + 'n79';
     const res = await runLargeConsole(session, longExpr, {transport: 'memory'});
     assert.equal(res.transport, 'memory');
     assert.equal(res.chunks, 1);
+    assert.match(res.memoryKey, /^__sa_boot_[a-z0-9]{8}$/);
     assert.equal(res.value, 79);
     assert.equal(memorySetCalls.length, 1);
     assert.equal(consoleCalls.length, 1);
-    assert.equal(memory.__sa_boot, undefined);
+    assert.equal(memory[res.memoryKey], undefined);
+  }
+
+  // 2b. auto 模式下若 Bot 清理了未知 Memory 键，自动降级为 chunk 分片执行。
+  {
+    const {session, memory} = createMockSession();
+    const origRun = session.run.bind(session);
+    session.run = code => {
+      for (const k of Object.keys(memory)) {
+        if (k.startsWith('__sa_boot')) delete memory[k];
+      }
+      return origRun(code);
+    };
+    const longExpr = Array.from({length: 80}, (_, i) => `var a${i} = ${i};`).join('') + 'a79';
+    const res = await runLargeConsole(session, longExpr);
+    assert.equal(res.transport, 'chunk');
+    assert.ok(res.chunks > 1);
+    assert.equal(res.value, 79);
   }
 
   // 3. 长表达式走 chunk 分片，不触碰 Memory。

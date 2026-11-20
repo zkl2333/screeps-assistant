@@ -112,14 +112,14 @@ function validateConsoleOptions(args) {
   const raw = Boolean(args.raw);
   const relay = Boolean(args.relay);
   const transport = args.transport;
-  if (transport !== undefined && transport !== 'memory' && transport !== 'chunk') {
-    throw new Error(`--transport 只支持 memory 或 chunk，实际收到：${transport}`);
+  if (transport !== undefined && transport !== 'auto' && transport !== 'memory' && transport !== 'chunk') {
+    throw new Error(`--transport 只支持 auto、memory 或 chunk，实际收到：${transport}`);
   }
   if (raw && (relay || transport !== undefined)) throw new Error('--raw 不能和 --relay / --transport 同用');
   if (raw && repeat !== undefined) throw new Error('--raw 不能和 --repeat 同用；raw 模式没有请求 ID，无法安全连拍');
   if (raw && retries > 0) throw new Error('--raw 不支持重试；请去掉 --retry，或显式使用 --retry 0');
   if ((relay || transport !== undefined) && repeat !== undefined) throw new Error('--relay 不能和 --repeat 同用');
-  return {timeoutMs, repeat, times, retries, raw, relay: relay || transport !== undefined, transport: transport || 'memory'};
+  return {timeoutMs, repeat, times, retries, raw, relay: relay || transport !== undefined, transport: transport || 'auto'};
 }
 
 function assertConsoleExpressionSize(expression, raw) {
@@ -198,9 +198,9 @@ async function runCliConsole(args, expression) {
 
 async function runCliTools(args) {
   const action = args._[0] || 'status';
-  const transport = args.transport || 'memory';
-  if (transport !== 'memory' && transport !== 'chunk') {
-    throw new Error(`--transport 只支持 memory 或 chunk，实际收到：${transport}`);
+  const transport = args.transport || 'auto';
+  if (transport !== 'auto' && transport !== 'memory' && transport !== 'chunk') {
+    throw new Error(`--transport 只支持 auto、memory 或 chunk，实际收到：${transport}`);
   }
   const timeoutMs = parseInteger(args.timeout, '--timeout', {min: 1, fallback: 15000});
   const retries = parseInteger(args.retry, '--retry', {min: 0});

@@ -2,8 +2,9 @@ import {McpServer} from '@modelcontextprotocol/server';
 import {serveStdio} from '@modelcontextprotocol/server/stdio';
 import {createRequire} from 'node:module';
 import * as z from 'zod/v4';
-import {runConsole, ConsoleRateLimitError, ConsoleTimeoutError} from '../api/console.js';
+import {openConsoleSession, ConsoleRateLimitError, ConsoleTimeoutError} from '../api/console.js';
 import consoleProtocol from '../api/console-protocol.js';
+import toolbox from '../api/toolbox.js';
 
 // 命令表是 CommonJS；MCP 入口是 ESM，用 createRequire 直接引同一份定义。
 const require = createRequire(import.meta.url);
@@ -143,14 +144,19 @@ function createServer() {
     }).strict(),
     annotations: {readOnlyHint: false, destructiveHint: true, idempotentHint: false},
   }, input => call(async () => {
-    const result = await runConsole(options(input), input.expression, {timeoutMs: input.timeoutMs, retries: 0});
-    return {
-      shard: result.shard,
-      id: result.id,
-      tick: result.tick,
-      attempts: result.attempts,
-      value: consoleProtocol.unwrapValue(result.value),
-    };
+    const session = await openConsoleSession(options(input));
+    try {
+      const result = await toolbox.runLargeConsole(session, input.expression, {timeoutMs: input.timeoutMs, retries: 0});
+      return {
+        shard: result.shard,
+        id: result.id,
+        tick: result.tick,
+        attempts: result.attempts,
+        value: consoleProtocol.unwrapValue(result.value),
+      };
+    } finally {
+      await session.close();
+    }
   }));
 
   return server;
