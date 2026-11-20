@@ -204,4 +204,36 @@ function summarizeResults(results) {
   };
 }
 
-module.exports = {ROOM_ASCII_LEGEND, classifyObjects, featureMap, formatRoomName, getNeighborRooms, parseRoomName, roomAscii, summarizeResults, summarizeRoom, terrainAscii, terrainCells, terrainSummary};
+/** 对已扫描房间按开矿/扩张价值打分排序（双 Source、平原占比、矿物、控制器与状态）。 */
+function rankRooms(results = []) {
+  const successful = results.filter(item => item && item.ok && item.value).map(item => item.value);
+  return successful.map(room => {
+    const t = room.terrain || {plain: 0, swamp: 0, wall: 0};
+    const plainRatio = t.plain / 2500;
+    const swampRatio = t.swamp / 2500;
+    let score = 0;
+    if (room.sources >= 2) score += 40;
+    else if (room.sources === 1) score += 15;
+    if (room.controller) score += 20;
+    if (room.status === 'normal') score += 10;
+    score += Math.round(plainRatio * 30);
+    score -= Math.round(swampRatio * 20);
+    if (room.mineral === 'X') score += 10;
+    else if (room.mineral) score += 5;
+    if (room.reactors?.length) score += 10;
+    return {
+      room: room.room,
+      score,
+      sources: room.sources,
+      mineral: room.mineral,
+      controller: room.controller,
+      status: room.status,
+      plainPct: Math.round(plainRatio * 1000) / 10,
+      swampPct: Math.round(swampRatio * 1000) / 10,
+      wallPct: Math.round((t.wall / 2500) * 1000) / 10,
+      reactors: room.reactors?.length || 0,
+    };
+  }).sort((a, b) => b.score - a.score || b.plainPct - a.plainPct);
+}
+
+module.exports = {ROOM_ASCII_LEGEND, classifyObjects, featureMap, formatRoomName, getNeighborRooms, parseRoomName, rankRooms, roomAscii, summarizeResults, summarizeRoom, terrainAscii, terrainCells, terrainSummary};

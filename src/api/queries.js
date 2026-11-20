@@ -332,6 +332,58 @@ function memoryStats(value, {limit = 15} = {}) {
   return {totalBytes, limitBytes: MEMORY_LIMIT_BYTES, usagePct, keys};
 }
 
+/** 从回放变化记录与房间统计中提取关键事故事件并按 tick 排序。 */
+function buildIncidentTimeline({room, shard, fromTick, toTick, records = [], overviewStats = []}) {
+  const events = [];
+  for (const r of records) {
+    if (r.op === 'removed') {
+      events.push({tick: r.tick, kind: 'removed', id: r.id, type: r.type, structureType: r.structureType, name: r.name, user: r.user, username: r.username, x: r.x, y: r.y});
+      continue;
+    }
+    if (r.op === 'added' && (r.type === 'tombstone' || r.type === 'ruin')) {
+      events.push({tick: r.tick, kind: r.type, id: r.id, type: r.type, name: r.name, user: r.user, username: r.username, x: r.x, y: r.y});
+      continue;
+    }
+    if (r.op === 'changed' && r.changes) {
+      const interesting = {};
+      for (const k of ['hits', 'store', 'safeMode', 'level']) {
+        if (r.changes[k] !== undefined) interesting[k] = r.changes[k];
+      }
+      if (Object.keys(interesting).length) {
+        events.push({tick: r.tick, kind: 'changed', id: r.id, type: r.type, structureType: r.structureType, name: r.name, user: r.user, username: r.username, x: r.x, y: r.y, changes: interesting});
+      }
+    }
+  }
+  for (const cell of overviewStats) {
+    if ((cell.creepsLost || 0) > 0 && (cell.tickEnd == null || cell.tickEnd >= fromTick) && (cell.tickStart == null || cell.tickStart <= toTick)) {
+      events.push({tick: cell.tickStart ?? fromTick, kind: 'overview_loss', creepsLost: cell.creepsLost, tickStart: cell.tickStart, tickEnd: cell.tickEnd});
+    }
+  }
+  events.sort((a, b) => a.tick - b.tick);
+  return {room, shard, fromTick, toTick, eventCount: events.length, timeline: events};
+}
+
+/** 战后时间线：自动串联 history 关键变化与 overview 损失格。 */
+async function getIncident(options = {}) {
+  if (!options.room) throw new Error('incident 查询需要 room');
+  const tick = parseTick(options.tick, '--tick');
+  if (tick === undefined) throw new Error('incident 需要 --tick <起始tick>');
+  const to = options.to === undefined ? tick + 100 : parseTick(options.to, '--to');
+  if (to <= tick) throw new Error(`--to 必须大于 --tick（收到 --tick ${tick} --to ${to}）`);
+  if (to - tick > HISTORY_MAX_SPAN) throw new Error(`--tick 到 --to 最多相隔 ${HISTORY_MAX_SPAN} tick（收到 ${to - tick}）`);
+
+  const {api, shard} = await client.context(options);
+  const chunks = [];
+  for (let base = chunkBase(tick); base <= chunkBase(to); base += HISTORY_CHUNK) {
+    chunks.push(await fetchHistoryChunk(api, {room: options.room, shard, base, tick: Math.max(tick, base)}));
+  }
+  const records = replayChanges(chunks, tick, to);
+  const withUsers = withUsernames(records, await resolveUsernames(api, records.map(item => item.user)));
+  const overview = await attempt(() => getRoomStats({...options, interval: 8})).catch(() => null);
+  const overviewStats = overview?.stats?.creepsLost || [];
+  return buildIncidentTimeline({room: options.room, shard, fromTick: tick, toTick: to, records: withUsers, overviewStats});
+}
+
 /** 按路径读 Memory，返回解码后的值；省略路径读整个 Memory；传 stats 时返回占用排行。 */
 async function getMemory(options = {}) {
   const {api, shard} = await client.context(options);
@@ -496,6 +548,7 @@ function getStatus(options = {}) {
 module.exports = {
   HISTORY_MAX_SPAN,
   HISTORY_RETENTION_TICKS,
+  buildIncidentTimeline,
   decodeMemoryValue,
   estimateTick,
   fetchHistoryChunk,
@@ -503,6 +556,7 @@ module.exports = {
   formatRoomStats,
   getAccount,
   getCode,
+  getIncident,
   getMarketOrders,
   getMemory,
   getMessageThread,

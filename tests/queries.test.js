@@ -617,6 +617,33 @@ const {applyOutputOptions} = require('../src/cli/output');
     }
     client.context = mockContext();
 
+    // buildIncidentTimeline：过滤噪声字段，按 tick 合并 history 与 overview 损失
+    {
+      const tl = queries.buildIncidentTimeline({
+        room: 'W1N1',
+        shard: 'shard2',
+        fromTick: 100,
+        toTick: 120,
+        records: [
+          {tick: 105, op: 'changed', id: 'c1', type: 'creep', changes: {_fatigue: 2}},
+          {tick: 108, op: 'changed', id: 'r1', type: 'structure', structureType: 'rampart', changes: {hits: 5000}},
+          {tick: 110, op: 'removed', id: 'c1', type: 'creep', name: 'h1'},
+          {tick: 111, op: 'added', id: 't1', type: 'tombstone', name: 'h1'},
+        ],
+        overviewStats: [
+          {creepsLost: 1, tickStart: 102, tickEnd: 115},
+          {creepsLost: 0, tickStart: 116, tickEnd: 125},
+        ],
+      });
+      assert.equal(tl.eventCount, 4);
+      assert.deepEqual(tl.timeline.map(e => `${e.tick}:${e.kind}`), [
+        '102:overview_loss',
+        '108:changed',
+        '110:removed',
+        '111:tombstone',
+      ]);
+    }
+
     // memoryStats：按字节降序统计一级/二级占用
     {
       const stats = queries.memoryStats({

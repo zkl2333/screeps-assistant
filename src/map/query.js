@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {context} = require('../api/client');
-const {featureMap, formatRoomName, getNeighborRooms, summarizeResults, summarizeRoom} = require('./analysis');
+const {featureMap, formatRoomName, getNeighborRooms, rankRooms, summarizeResults, summarizeRoom} = require('./analysis');
 
 const DEFAULT_CONCURRENCY = 4;
 const CACHE_DIR = path.resolve(__dirname, '..', '..', '.cache', 'map');
@@ -124,7 +124,9 @@ async function scanRooms(options = {}) {
   const cacheTtl = parseCacheTtl(options.cacheTtl);
   const results = await mapLimit(roomsToQuery, concurrency, room =>
     scanRoom(api, config.server, shard, room, version, {noCache: Boolean(options.noCache), cacheTtl}));
-  return {target, server: config.server, shard, summary: summarizeResults(results), results};
+  const output = {target, server: config.server, shard, summary: summarizeResults(results), results};
+  if (options.rank) output.ranked = rankRooms(results);
+  return output;
 }
 
 /** 读取目标环境概况：赛季能力、分片、世界尺寸和游戏时间。 */

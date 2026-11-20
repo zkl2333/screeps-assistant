@@ -7,6 +7,7 @@ const {
   formatRoomName,
   getNeighborRooms,
   parseRoomName,
+  rankRooms,
   roomAscii,
   summarizeResults,
   summarizeRoom,
@@ -89,6 +90,15 @@ const battleAscii = roomAscii([{x: 0, y: 0, type: 'wall'}], [
   {type: 'creep', x: 4, y: 0, user: 'enemy'},
 ], 'me');
 assert.equal(battleAscii.split('\n')[0].slice(0, 6), '#RScE.');
+
+const ranked = rankRooms([
+  {ok: true, value: {room: 'W1N1', sources: 1, controller: true, status: 'normal', mineral: 'H', terrain: {plain: 1000, swamp: 1000, wall: 500}, reactors: []}},
+  {ok: true, value: {room: 'W2N2', sources: 2, controller: true, status: 'normal', mineral: 'X', terrain: {plain: 2000, swamp: 100, wall: 400}, reactors: []}},
+  {ok: false, error: 'skip'},
+]);
+assert.equal(ranked.length, 2);
+assert.equal(ranked[0].room, 'W2N2');
+assert.ok(ranked[0].score > ranked[1].score);
 
 // 范围汇总：失败的房间只计入 failed
 const aggregated = summarizeResults([

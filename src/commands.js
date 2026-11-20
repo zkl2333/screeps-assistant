@@ -14,6 +14,7 @@
  */
 
 const queries = require('./api/queries');
+const cpu = require('./api/cpu');
 const logs = require('./api/logs');
 const {readWorld, scanRooms} = require('./map/query');
 
@@ -69,6 +70,25 @@ const COMMAND_TABLE = [
       changed: {type: 'string', description: '只保留 changes 里含指定键的记录并裁剪 changes（逗号分隔，例如 hits,store），需配合 to 使用'},
     },
     run: options => queries.getRoomHistory(options),
+  },
+  {
+    name: 'incident',
+    description: '战后/异常时间线拼接：自动聚合 history 关键掉血/摧毁/墓碑事件与 overview 损失格，按 tick 排序。',
+    params: {
+      room: ROOM,
+      tick: {type: 'integer', min: 0, mcpRequired: true, description: '起始 tick'},
+      to: {type: 'integer', min: 0, description: '结束 tick（省略时默认 tick + 100，最多相隔 1000）'},
+    },
+    run: options => queries.getIncident(options),
+  },
+  {
+    name: 'cpu',
+    description: '订阅 WebSocket cpu 频道做外部无侵入采样（0 游戏内 CPU），统计均值、P50/P95/Max 与 Memory 占用。',
+    params: {
+      duration: {type: 'integer', min: 1, max: 600, mcpMax: 60, description: '采样秒数，默认 20'},
+      limit: {type: 'integer', min: 1, max: 5000, description: '最多采样条数，默认 200'},
+    },
+    run: (options, deps) => cpu.collectCpu(options, deps),
   },
   {
     name: 'logs',
@@ -144,10 +164,14 @@ const COMMAND_TABLE = [
       cacheTtl: {type: 'integer', min: 1, description: '地形缓存有效期（毫秒），省略为永久缓存'},
       noCache: {type: 'boolean', description: '不用地形缓存'},
       summaryOnly: {type: 'boolean', description: '只返回范围汇总，不返回逐房间结果'},
+      rank: {type: 'boolean', description: '按双 Source、平原比例、矿物等对扫描房间打分排序'},
     },
     run: async options => {
       const scan = await scanRooms(options);
-      return options.summaryOnly ? {target: scan.target, shard: scan.shard, summary: scan.summary} : scan;
+      if (!options.summaryOnly) return scan;
+      const out = {target: scan.target, shard: scan.shard, summary: scan.summary};
+      if (scan.ranked) out.ranked = scan.ranked;
+      return out;
     },
   },
   {
