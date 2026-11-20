@@ -145,7 +145,7 @@ function interruptibleSleep(getInterrupted) {
 
 async function runCliConsole(args, expression) {
   const config = validateConsoleOptions(args);
-  if (!config.relay) assertConsoleExpressionSize(expression, config.raw);
+  if (config.raw || config.repeat !== undefined) assertConsoleExpressionSize(expression, config.raw);
   const opts = options(args);
   if (config.repeat !== undefined) {
     let interrupted = false;
@@ -179,16 +179,16 @@ async function runCliConsole(args, expression) {
 
   const session = await openConsoleSession(opts);
   try {
-    const result = config.relay
-      ? await runLargeConsole(session, expression, {
+    const result = config.raw
+      ? await session.run(expression, {
+        timeoutMs: config.timeoutMs,
+        retries: 0,
+        raw: true,
+      })
+      : await runLargeConsole(session, expression, {
         transport: config.transport,
         timeoutMs: config.timeoutMs,
         retries: config.retries,
-      })
-      : await session.run(expression, {
-        timeoutMs: config.timeoutMs,
-        retries: config.raw ? 0 : config.retries,
-        raw: config.raw,
       });
     printConsoleResult(result, args);
   } finally {

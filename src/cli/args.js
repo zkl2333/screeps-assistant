@@ -190,7 +190,7 @@ EOF
   node bin/screeps-assistant.js console --file probe.js --envelope              # 带请求 ID、tick 和尝试次数
   node bin/screeps-assistant.js console --file probe.js --repeat 10 --times 10
   node bin/screeps-assistant.js console --file probe.js --raw --retry 0
-  node bin/screeps-assistant.js console --file large.js --relay [--transport memory|chunk]
+  node bin/screeps-assistant.js console --file large.js [--transport memory|chunk] # 超长自动中转
 
 临时工具空间与收件箱：
   node bin/screeps-assistant.js tools inject [--file custom.js] [--transport memory|chunk]
