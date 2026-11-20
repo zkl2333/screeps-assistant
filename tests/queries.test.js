@@ -617,6 +617,19 @@ const {applyOutputOptions} = require('../src/cli/output');
     }
     client.context = mockContext();
 
+    // summarizeMoneyHistory：按类型汇总 Credit 净变化
+    {
+      const summary = queries.summarizeMoneyHistory([
+        {type: 'market.sell', change: 1500.5},
+        {type: 'market.fee', change: -75.25},
+        {type: 'market.sell', change: 500},
+      ]);
+      assert.equal(summary.count, 3);
+      assert.equal(summary.netChange, 1925.25);
+      assert.deepEqual(summary.byType['market.sell'], {count: 2, change: 2000.5});
+      assert.deepEqual(summary.byType['market.fee'], {count: 1, change: -75.25});
+    }
+
     // summarizeMarketOrders：过滤零剩余单、排序买卖盘、算价差与成交统计
     {
       const quote = queries.summarizeMarketOrders([

@@ -156,6 +156,22 @@ const COMMAND_TABLE = [
     run: options => queries.getNukes(options),
   },
   {
+    name: 'money',
+    description: 'Credit 资金流水（市场成交、手续费等），支持 page 分页与按类型汇总净变化。',
+    params: {
+      page: {type: 'integer', min: 0, description: '页码（从 0 开始，默认 0）'},
+    },
+    run: options => queries.getMoneyHistory(options),
+  },
+  {
+    name: 'player',
+    description: '按用户名查询其他玩家的公开信息（GCL、Power、CPU 与徽章）。',
+    params: {
+      username: {type: 'string', positional: true, required: true, mcpRequired: true, description: '玩家用户名'},
+    },
+    run: options => queries.findPlayer(options),
+  },
+  {
     name: 'messages',
     description: '不带参数：游戏内消息未读数与消息索引；带对方用户名（或用户 id）：读该对话的完整往来。纯读，不会把消息标记为已读。',
     params: {
@@ -165,7 +181,10 @@ const COMMAND_TABLE = [
   },
   {
     name: 'shards',
-    description: '目标服务器的分片信息。',
+    description: '目标服务器的分片信息；传 cpu 时附带账号各分片 CPU 配额分配（只读）。',
+    params: {
+      cpu: {type: 'boolean', description: '附带账号各分片 CPU 配额分配'},
+    },
     run: options => queries.listShards(options),
   },
   {

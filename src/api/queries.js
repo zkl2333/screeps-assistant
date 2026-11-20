@@ -24,8 +24,21 @@ async function getAccount(options = {}) {
 }
 
 async function listShards(options = {}) {
-  const {api} = await client.context(options);
-  return await api.gameShardsInfo();
+  const {api, account} = await client.context(options);
+  const info = await api.gameShardsInfo();
+  if (options.cpu) {
+    return {
+      totalCpu: account?.cpu ?? null,
+      cpuShard: account?.cpuShard || {},
+      shards: (info?.shards || []).map(s => ({
+        name: s.name,
+        tick: s.tick,
+        cpuLimit: s.cpuLimit,
+        allocatedCpu: account?.cpuShard?.[s.name] ?? null,
+      })),
+    };
+  }
+  return info;
 }
 
 async function listRooms(options = {}) {
@@ -601,6 +614,57 @@ function formatNukesData(nukesResponse = {}, {shard, allShards = false, gameTime
   return {shard: allShards ? 'all' : shard, count: nukes.length, nukes};
 }
 
+/** 汇总 Credit 资金流水。 */
+function summarizeMoneyHistory(list = []) {
+  let netChange = 0;
+  const byType = {};
+  for (const item of list) {
+    const change = Number(item?.change) || 0;
+    netChange += change;
+    const type = item?.type || 'unknown';
+    const entry = byType[type] || (byType[type] = {count: 0, change: 0});
+    entry.count += 1;
+    entry.change = Math.round((entry.change + change) * 1000) / 1000;
+  }
+  return {
+    count: list.length,
+    netChange: Math.round(netChange * 1000) / 1000,
+    byType,
+  };
+}
+
+/** Credit 资金流水（市场成交、手续费等），支持 --page 分页。 */
+async function getMoneyHistory(options = {}) {
+  const page = options.page === undefined ? 0 : parseTick(options.page, '--page');
+  const {api} = await client.context(options);
+  const res = await api.userMoneyHistory(page);
+  const list = res?.list || [];
+  return {
+    page: res?.page ?? page,
+    hasMore: Boolean(res?.hasMore),
+    summary: summarizeMoneyHistory(list),
+    list,
+  };
+}
+
+/** 按用户名查询其他玩家公开资料（GCL、Power、Badge 等）。 */
+async function findPlayer(options = {}) {
+  if (!options.username || isBlank(options.username)) throw new Error('player 查询需要 username');
+  const {api} = await client.context(options);
+  const res = await api.userFind(options.username.trim());
+  const user = res?.user;
+  if (!user) throw new Error(`未找到玩家：${options.username}`);
+  return {
+    id: user._id,
+    username: user.username,
+    gcl: user.gcl,
+    gclProgress: client.gclProgress(user.gcl),
+    power: user.power,
+    cpu: user.cpu,
+    badge: user.badge,
+  };
+}
+
 async function getNukes(options = {}) {
   const {api, shard} = await client.context(options);
   const [res, time] = await Promise.all([
@@ -671,6 +735,7 @@ module.exports = {
   decodeMemoryValue,
   estimateTick,
   fetchHistoryChunk,
+  findPlayer,
   formatLocalTime,
   formatNukesData,
   formatPvpData,
@@ -682,6 +747,7 @@ module.exports = {
   getMemory,
   getMessageThread,
   getMessages,
+  getMoneyHistory,
   getNukes,
   getPvp,
   getRoom,
@@ -696,6 +762,7 @@ module.exports = {
   readSummary,
   resolveUsernames,
   summarizeMarketOrders,
+  summarizeMoneyHistory,
   verifyCodeModules,
   withUsernames,
 };
