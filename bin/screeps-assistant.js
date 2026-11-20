@@ -14,6 +14,15 @@ const {
   unwrapValue,
   wrapExpression,
 } = require('../src/api/console-protocol');
+const {
+  DEFAULT_MEMORY_INBOX_PREFIX,
+  clearToolbox,
+  flushInbox,
+  injectToolbox,
+  pushInbox,
+  runLargeConsole,
+  statusToolbox,
+} = require('../src/api/toolbox');
 const {commandArgs, helpText, parseInteger, readConsoleExpression} = require('../src/cli/args');
 const {consoleEnvelope, printResult} = require('../src/cli/output');
 const {terrainAscii} = require('../src/map/analysis');
@@ -101,9 +110,16 @@ function validateConsoleOptions(args) {
   const times = parseInteger(args.times, '--times', {min: 1, max: 60, fallback: repeat === undefined ? undefined : 10});
   const retries = parseInteger(args.retry, '--retry', {min: 0, fallback: repeat === undefined ? undefined : 0});
   const raw = Boolean(args.raw);
+  const relay = Boolean(args.relay);
+  const transport = args.transport;
+  if (transport !== undefined && transport !== 'memory' && transport !== 'chunk') {
+    throw new Error(`--transport 只支持 memory 或 chunk，实际收到：${transport}`);
+  }
+  if (raw && (relay || transport !== undefined)) throw new Error('--raw 不能和 --relay / --transport 同用');
   if (raw && repeat !== undefined) throw new Error('--raw 不能和 --repeat 同用；raw 模式没有请求 ID，无法安全连拍');
   if (raw && retries > 0) throw new Error('--raw 不支持重试；请去掉 --retry，或显式使用 --retry 0');
-  return {timeoutMs, repeat, times, retries, raw};
+  if ((relay || transport !== undefined) && repeat !== undefined) throw new Error('--relay 不能和 --repeat 同用');
+  return {timeoutMs, repeat, times, retries, raw, relay: relay || transport !== undefined, transport: transport || 'memory'};
 }
 
 function assertConsoleExpressionSize(expression, raw) {
@@ -129,7 +145,7 @@ function interruptibleSleep(getInterrupted) {
 
 async function runCliConsole(args, expression) {
   const config = validateConsoleOptions(args);
-  assertConsoleExpressionSize(expression, config.raw);
+  if (!config.relay) assertConsoleExpressionSize(expression, config.raw);
   const opts = options(args);
   if (config.repeat !== undefined) {
     let interrupted = false;
@@ -163,15 +179,108 @@ async function runCliConsole(args, expression) {
 
   const session = await openConsoleSession(opts);
   try {
-    const result = await session.run(expression, {
-      timeoutMs: config.timeoutMs,
-      retries: config.raw ? 0 : config.retries,
-      raw: config.raw,
-    });
+    const result = config.relay
+      ? await runLargeConsole(session, expression, {
+        transport: config.transport,
+        timeoutMs: config.timeoutMs,
+        retries: config.retries,
+      })
+      : await session.run(expression, {
+        timeoutMs: config.timeoutMs,
+        retries: config.raw ? 0 : config.retries,
+        raw: config.raw,
+      });
     printConsoleResult(result, args);
   } finally {
     await session.close();
   }
+}
+
+async function runCliTools(args) {
+  const action = args._[0] || 'status';
+  const transport = args.transport || 'memory';
+  if (transport !== 'memory' && transport !== 'chunk') {
+    throw new Error(`--transport 只支持 memory 或 chunk，实际收到：${transport}`);
+  }
+  const timeoutMs = parseInteger(args.timeout, '--timeout', {min: 1, fallback: 15000});
+  const retries = parseInteger(args.retry, '--retry', {min: 0});
+  const opts = options(args);
+
+  if (action === 'inject') {
+    let customCode;
+    if (args.file !== undefined || args.expr !== undefined) {
+      customCode = await readConsoleExpression({...args, _: []});
+    }
+    const session = await openConsoleSession(opts);
+    try {
+      const res = await injectToolbox(session, {code: customCode, transport, timeoutMs, retries});
+      return printResult(res, args);
+    } finally {
+      await session.close();
+    }
+  }
+  if (action === 'status') {
+    const session = await openConsoleSession(opts);
+    try {
+      const res = await statusToolbox(session, {timeoutMs, retries});
+      return printConsoleResult(res, args);
+    } finally {
+      await session.close();
+    }
+  }
+  if (action === 'clear') {
+    const session = await openConsoleSession(opts);
+    try {
+      const res = await clearToolbox(session, {timeoutMs, retries});
+      return printConsoleResult(res, args);
+    } finally {
+      await session.close();
+    }
+  }
+  throw new Error(`tools 不支持子操作 "${action}"。可用：inject, status, clear`);
+}
+
+async function runCliInbox(args) {
+  const action = args._[0] || 'list';
+  const opts = options(args);
+  if (action === 'list') {
+    const {api, shard} = await context(opts);
+    const res = await api.userMemoryGet('', shard);
+    const root = decodeMemoryValue(res?.data) || {};
+    const inbox = {};
+    for (const [k, v] of Object.entries(root)) {
+      if (k.startsWith(DEFAULT_MEMORY_INBOX_PREFIX)) inbox[k.slice(DEFAULT_MEMORY_INBOX_PREFIX.length)] = v;
+    }
+    return printResult(inbox, args);
+  }
+  if (action === 'push') {
+    const rawPayload = await readConsoleExpression({...args, _: args._.slice(1)});
+    let payload = rawPayload;
+    try {
+      payload = JSON.parse(rawPayload);
+    } catch {
+      // 非 JSON 文本则按原始字符串写入。
+    }
+    const {api, shard} = await context(opts);
+    const res = await pushInbox(api, shard, payload, {id: args.id});
+    return printResult(res, args);
+  }
+  if (action === 'flush') {
+    const timeoutMs = parseInteger(args.timeout, '--timeout', {min: 1, fallback: 15000});
+    const retries = parseInteger(args.retry, '--retry', {min: 0, fallback: 0});
+    let handlerExpr;
+    if (args.file !== undefined || args.expr !== undefined || args._.length > 1) {
+      handlerExpr = await readConsoleExpression({...args, _: args._.slice(1)});
+    }
+    const session = await openConsoleSession(opts);
+    try {
+      const res = await flushInbox(session, {handlerExpr, transport: args.transport || 'memory', timeoutMs, retries});
+      return printConsoleResult(res, args);
+    } finally {
+      await session.close();
+    }
+  }
+  throw new Error(`inbox 不支持子操作 "${action}"。可用：push, list, flush`);
 }
 
 async function main() {
@@ -184,6 +293,8 @@ async function main() {
     const expression = await readConsoleExpression(args);
     return runCliConsole(args, expression);
   }
+  if (args.command === 'tools') return runCliTools(args);
+  if (args.command === 'inbox') return runCliInbox(args);
 
   const command = COMMAND_BY_NAME[args.command];
   if (!command) {

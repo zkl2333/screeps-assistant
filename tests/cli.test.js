@@ -145,4 +145,14 @@ const pretty = [];
 printResult({a: 1}, {}, {write: text => pretty.push(text)});
 assert.match(pretty.join(''), /\{\n {2}"a": 1\n\}/);
 
+assert.deepEqual(parseArgs(['console', '--relay', '--transport=chunk', '--expr', '1+1']), {
+  _: [], relay: true, transport: 'chunk', expr: '1+1', command: 'console',
+});
+assert.deepEqual(commandArgs(['tools', 'inject', '--target', 'main']), {
+  _: ['inject'], target: 'main', command: 'tools',
+});
+assert.deepEqual(commandArgs(['inbox', 'flush', '--target', 'main']), {
+  _: ['flush'], target: 'main', command: 'inbox',
+});
+
 })().then(() => console.log('CLI 参数与输出测试通过'));

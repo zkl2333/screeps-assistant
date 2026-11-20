@@ -12,8 +12,8 @@ for (const command of COMMAND_TABLE) {
   assert.equal(COMMAND_BY_NAME[command.name], command);
 }
 
-// CLI 的命令列表 = 命令表 + console/help；每个命令都能通过参数校验。
-assert.deepEqual(COMMANDS, [...COMMAND_TABLE.map(command => command.name), 'console', 'help']);
+// CLI 的命令列表 = 命令表 + console/tools/inbox/help；每个命令都能通过参数校验。
+assert.deepEqual(COMMANDS, [...COMMAND_TABLE.map(command => command.name), 'console', 'tools', 'inbox', 'help']);
 for (const command of COMMAND_TABLE) {
   assert.doesNotThrow(() => commandArgs([command.name]), `${command.name} 未被 CLI 接受`);
 }
@@ -34,8 +34,8 @@ assert.deepEqual(parseArgs(['logs', '--all-shards', '--limit', '50']), {_: [], '
 assert.deepEqual(parseArgs(['map', '--summary-only', '--cache-ttl', '1000']), {_: [], 'summary-only': true, 'cache-ttl': '1000', command: 'map'});
 assert.deepEqual(parseArgs(['map', '--around', 'W1N1', '--radius', '2']), {_: [], around: 'W1N1', radius: '2', command: 'map'});
 
-// 只有 console 和 help 是表外的，别把表外命令漏掉。
-assert.deepEqual(COMMANDS.filter(name => !COMMAND_BY_NAME[name]).sort(), ['console', 'help']);
+// 只有 console、tools、inbox 和 help 是表外的，别把表外命令漏掉。
+assert.deepEqual(COMMANDS.filter(name => !COMMAND_BY_NAME[name]).sort(), ['console', 'help', 'inbox', 'tools']);
 
 // status 之前只有 MCP 有，现在 CLI 也支持，help 里要能看到。
 assert.ok(COMMAND_BY_NAME.status);

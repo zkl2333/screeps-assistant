@@ -5,19 +5,20 @@ const path = require('node:path');
 const {Buffer} = require('node:buffer');
 const {COMMAND_TABLE, tableFlags} = require('../commands');
 
-// 查询命令及其参数来自命令表；这里只补 console、help 和 CLI 独有的 flag。
-const COMMANDS = [...COMMAND_TABLE.map(command => command.name), 'console', 'help'];
+// 查询命令及其参数来自命令表；这里只补 console、tools、inbox、help 和 CLI 独有的 flag。
+const COMMANDS = [...COMMAND_TABLE.map(command => command.name), 'console', 'tools', 'inbox', 'help'];
 const TABLE_FLAGS = tableFlags();
 const BOOLEAN_FLAGS = new Set([
   ...TABLE_FLAGS.booleans,
   'compact', 'help', // 通用
-  'raw', 'envelope', // console
+  'raw', 'relay', 'envelope', // console
   'ascii', 'text', // map / logs 的纯文本输出
 ]);
 const VALUE_FLAGS = new Set([
   ...TABLE_FLAGS.values,
   'target', 'shard', 'account', 'pick', 'filter', 'fields', // 通用
-  'expr', 'file', 'timeout', 'retry', 'repeat', 'times', // console
+  'expr', 'file', 'timeout', 'retry', 'repeat', 'times', 'transport', // console / tools / inbox
+  'id', // inbox
 ]);
 const PROBES_DIR = path.join(__dirname, '..', '..', 'probes');
 const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, ...VALUE_FLAGS]);
@@ -156,6 +157,8 @@ function helpText() {
   memory [路径]            按路径读 Memory；省略路径读整个 Memory
   segment --id <id,...>    读 Memory Segment
   console                  执行游戏内表达式（见下）
+  tools                    临时工具空间：inject | status | clear
+  inbox                    临时收件箱：push | list | flush
   code [--branch <分支>]   线上代码模块列表
   market / messages        己方市场挂单 / 消息索引（messages <用户名> 读该对话全文）
   shards / world           分片信息 / 环境概况
@@ -187,6 +190,13 @@ EOF
   node bin/screeps-assistant.js console --file probe.js --envelope              # 带请求 ID、tick 和尝试次数
   node bin/screeps-assistant.js console --file probe.js --repeat 10 --times 10
   node bin/screeps-assistant.js console --file probe.js --raw --retry 0
+  node bin/screeps-assistant.js console --file large.js --relay [--transport memory|chunk]
+
+临时工具空间与收件箱：
+  node bin/screeps-assistant.js tools inject [--file custom.js] [--transport memory|chunk]
+  node bin/screeps-assistant.js tools status | clear
+  node bin/screeps-assistant.js inbox push --expr '{"cmd":"ping"}' [--id msg1]
+  node bin/screeps-assistant.js inbox list | flush [--expr "items => items.length"]
 
 包装模式用请求 ID 匹配回包并按同一 ID 重试；raw 模式关闭包装和重试。写入类表达式建议 --retry 0。
 

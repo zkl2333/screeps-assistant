@@ -4,9 +4,14 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const {
   MAX_EXPRESSION_BYTES,
+  OFFICIAL_EXPRESSION_LIMIT,
   assertExpressionSize,
+  buildChunkExpressions,
+  buildRelayBootstrapExpression,
   createRequestId,
   expressionBytes,
+  fitsOfficialConsole,
+  jsonExpressionLength,
   parseResponse,
   unwrapValue,
   wrapExpression,
@@ -83,5 +88,46 @@ assert.equal(expressionBytes('½'), 2);
 const exact = 'x'.repeat(MAX_EXPRESSION_BYTES);
 assertExpressionSize(exact);
 assert.throws(() => assertExpressionSize(exact + 'x'), /表达式过长：实际 1001 字节，上限 1000 字节/);
+
+assert.equal(jsonExpressionLength('abc'), 5);
+assert.equal(jsonExpressionLength('a"b'), 6);
+assert.equal(fitsOfficialConsole('a'.repeat(OFFICIAL_EXPRESSION_LIMIT - 2)), true);
+assert.equal(fitsOfficialConsole('a'.repeat(OFFICIAL_EXPRESSION_LIMIT - 1)), false);
+
+// relay bootstrap：读取 Memory.__sa_boot、先删键再 eval，即使抛错也不留残留。
+const relayCtx = {Game: {time: 500}, Memory: {__sa_boot: 'var x = 21; x * 2'}};
+relayCtx.global = relayCtx;
+vm.createContext(relayCtx);
+const relayDriver = vm.runInContext('(function(code){return "" + eval(code);})', relayCtx);
+const relayOut = relayDriver(wrapExpression(buildRelayBootstrapExpression(), 'rel00001'));
+assert.deepEqual(parseResponse(relayOut, 'rel00001'), {id: 'rel00001', tick: 500, kind: 'j', value: 42});
+assert.equal(relayCtx.Memory.__sa_boot, undefined);
+
+relayCtx.Memory.__sa_boot = 'throw new Error("relay boom")';
+const relayErrOut = relayDriver(wrapExpression(buildRelayBootstrapExpression(), 'rel00002'));
+assert.equal(parseResponse(relayErrOut, 'rel00002').kind, 'e');
+assert.equal(relayCtx.Memory.__sa_boot, undefined);
+
+// chunk 分片：每片经 wrapExpression 包装后均 <= 1024 字符，顺序执行后完整求值并清理缓冲区。
+const longScript = Array.from({length: 40}, (_, i) => `var v${i} = "line_${i}\\n";`).join('') + 'v0 + v39';
+const {bufId, expressions} = buildChunkExpressions(longScript, {bufId: 'buf00001'});
+assert.ok(expressions.length > 1);
+for (let i = 0; i < expressions.length; i += 1) {
+  const wrapped = wrapExpression(expressions[i], `chk0000${i}`.slice(0, 8));
+  assert.ok(jsonExpressionLength(wrapped) <= OFFICIAL_EXPRESSION_LIMIT);
+}
+const chunkCtx = {Game: {time: 600}};
+chunkCtx.global = chunkCtx;
+vm.createContext(chunkCtx);
+const chunkDriver = vm.runInContext('(function(code){return "" + eval(code);})', chunkCtx);
+let finalChunkParsed = null;
+for (let i = 0; i < expressions.length; i += 1) {
+  const reqId = `chk0000${i}`.slice(0, 8);
+  const out = chunkDriver(wrapExpression(expressions[i], reqId));
+  finalChunkParsed = parseResponse(out, reqId);
+}
+assert.equal(finalChunkParsed.kind, 'j');
+assert.equal(finalChunkParsed.value, 'line_0\nline_39\n');
+assert.equal(chunkCtx.__sa_b[bufId], undefined);
 
 console.log('console 协议测试通过');
