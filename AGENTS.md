@@ -126,7 +126,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
 - **操作边界：**
   - 查询和只读分析可直接执行
   - 排查、评估和 review 默认只执行只读操作
-  - 不禁止写入能力，但**所有写入操作**（包括写入类 Console 表达式、Memory/Segment 写入、分片 CPU 调整、市场挂单、消息发送/标已读、建筑/旗帜/Intent 等）均须经用户明确授权后方可执行
+  - 不禁止写入能力，但**所有写入操作**（包括写入类 Console 表达式、Memory/Segment 写入、分片 CPU 调整、市场挂单、消息发送/标已读、建筑/旗帜/Intent 等）均须经用户明确授权后方可执行；工具级持久化写入命令统一采用 **Dry-run 预览 + `--confirm`（MCP `confirm: true`）二次确认** 机制（高危/不可逆操作可要求传入确认目标名）
   - 重生、放弃房间、代码覆盖等不可逆或高影响操作，执行前必须明确告知影响并获得用户确认
   - Bot 正式代码发布默认走其自身发布流程（如 CI），除非用户明确授权
 - **探针：** 线上排查先用内置命令（`room --objects`、`memory` 加 `--filter` / `--fields`、`overview`、`history`），读 bot 运行时状态才写 console 探针；探针放 `probes/`（不入库），不要放仓库根目录。
