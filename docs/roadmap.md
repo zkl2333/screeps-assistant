@@ -21,11 +21,10 @@
 
 ## 待做
 
-### 1. 分块上传长表达式与 `--arg` 传参
+### 1. `--arg` 传参（长表达式中转与 `chunk` 分片已完成）
 
-- **现状**：console 表达式整条上限 1000 字节，包装占约 320 字节，实际只剩约 680 字节。稍复杂的探针只能精简或拆文件；探针里的房间名、阈值要改文件重跑。
-- **要做**：`--arg 名=值`（可重复；值按 JSON 解析，不行就当字符串）把参数注入表达式作用域，同一个探针文件可以复用。超过上限的表达式分块上传到 bot 的 `global`，拼接后执行。
-- **注意**：分块每块占一次 console 发送额度（360 次/小时），还要处理半途失败，需要完整性校验和清理。建议先做 `--arg`，分块视需要再做。
+- **已完成**：单次 `console`（CLI 与 MCP `screeps_console`）已支持自动中转超长表达式（`Memory.__sa_boot_<id>` 单次引导，被清理时自动降级 `global.__sa_b` 分片）。
+- **待做**：`--arg 名=值`（可重复；值按 JSON 解析，不行就当字符串）把参数注入表达式作用域，同一个探针文件可以复用。
 
 ### 2. `room` 摘要加深
 
@@ -42,7 +41,6 @@
 - **已完成**：查询命令收进命令表 `src/commands.js`，CLI 与 MCP 同源；工具名 `screeps_<命令名>`，参数名取 CLI flag 的 camelCase；`room --objects`、`overview`、`history`、`logs`、`map`、`code`、`market`、`messages`、`summary`、`world` 全部补齐；`pick` / `filter` / `fields` 在 MCP 上通用，超长结果靠它们收窄；`logs` 单次封顶 60 秒。
 - **还差**：常驻 socket，避免每次 console 调用都重连。超长结果目前是报错不返回，若以后要真分页再单独开条目。
 
-### 5. `history --changed`
+### 5. `history --changed`（已完成 2026-11-20）
 
-- **现状**：`history --to` 的变化记录里夹着 `_fatigue`、`_oldFatigue` 这类引擎内部字段，看战斗时噪声大。
-- **要做**：`--changed hits,store` 只保留 `changes` 里含这些键的记录，并把 `changes` 裁剪到这些键。默认行为不变。
+- **已实现**：`history --to` 支持 `--changed hits,store`，只保留 `changes` 里含这些键的记录并裁剪 `changes`，默认行为不变（CLI 与 MCP `screeps_history` 同步支持）。

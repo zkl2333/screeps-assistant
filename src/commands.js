@@ -65,6 +65,7 @@ const COMMAND_TABLE = [
       room: ROOM,
       tick: {type: 'integer', min: 0, mcpRequired: true, description: '要还原的 tick（处理完该 tick 后的现场）'},
       to: {type: 'integer', min: 0, description: '变化记录的结束 tick，必须大于 tick'},
+      changed: {type: 'string', description: '只保留 changes 里含指定键的记录并裁剪 changes（逗号分隔，例如 hits,store），需配合 to 使用'},
     },
     run: options => queries.getRoomHistory(options),
   },

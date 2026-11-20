@@ -248,6 +248,14 @@ assert.equal(chunkBase(77_949_750), 77_949_700);
   // 只列 (from, to] 内的变化；from == to 没有记录
   assert.deepEqual(replayChanges([chunk], 102, 103).map(item => `${item.tick}:${item.op}:${item.id}`), ['103:removed:B']);
   assert.deepEqual(replayChanges([chunk], 103, 103), []);
+
+  // --changed 降噪：只保留 changes 中命中指定键的记录，并裁剪 changes
+  const filtered = replayChanges([chunk], 100, 105, {changed: 'y, energy'});
+  assert.deepEqual(filtered, [
+    {tick: 102, op: 'changed', id: 'A', type: 'creep', name: 'A', user, x: 12, y: 11, changes: {y: 11}},
+    {tick: 102, op: 'changed', id: 'S', type: 'source', x: 5, y: 5, changes: {energy: 2990}},
+  ]);
+  assert.throws(() => replayChanges([chunk], 100, 105, {changed: ' , '}), /--changed 至少需要一个字段名/);
   assert.deepEqual(replayChanges([chunk], 105, 110), []);
 
   // changes 是克隆：改记录不影响 chunk

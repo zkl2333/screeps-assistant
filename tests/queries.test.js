@@ -607,6 +607,7 @@ const {applyOutputOptions} = require('../src/cli/output');
       for (const bad of ['x', '-1', 2.5, '']) await reject({...historyOptions, tick, to: bad}, `--to 必须是非负整数，收到：${bad}`);
       await reject({...historyOptions, tick, to: tick}, `--to 必须大于 --tick（收到 --tick ${tick} --to ${tick}）`);
       await reject({...historyOptions, tick, to: tick - 5}, `--to 必须大于 --tick（收到 --tick ${tick} --to ${tick - 5}）`);
+      await reject({...historyOptions, tick, changed: 'hits'}, '--changed 需要配合 --to 使用');
       const span = queries.HISTORY_MAX_SPAN + 1;
       await reject({...historyOptions, tick, to: tick + span}, `--tick 到 --to 最多相隔 ${queries.HISTORY_MAX_SPAN} tick（收到 ${span}）；缩小范围，或分段查询`);
       assert.equal(contexts, 0);

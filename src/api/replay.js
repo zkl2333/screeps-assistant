@@ -167,7 +167,35 @@ function replayState(chunk, tick) {
  * 记录：removed / added 只带简述（removed 取消失前的样子），changed 带该对象这一帧的差异 changes 和变化后的简述。
  * 跨块那一格没有差异可用，改拿上一帧状态和下一块的起始快照比出差异，之后状态直接换成官方快照。
  */
-function replayChanges(chunks, from, to) {
+function parseChangedKeys(changed) {
+  if (changed === undefined || changed === null) return null;
+  if (changed instanceof Set) return changed;
+  const raw = Array.isArray(changed) ? changed : String(changed).split(',');
+  const keys = raw.map(item => String(item).trim()).filter(Boolean);
+  if (!keys.length) throw new Error('--changed 至少需要一个字段名，例如 hits,store');
+  return new Set(keys);
+}
+
+/** 按指定变更字段过滤并裁剪回放变化记录（仅保留 changes 命中这些键的记录）。 */
+function filterChangedRecords(records, changed) {
+  const keys = parseChangedKeys(changed);
+  if (!keys) return records;
+  const filtered = [];
+  for (const record of records) {
+    if (record.op !== 'changed' || !record.changes) continue;
+    const picked = {};
+    for (const key of Object.keys(record.changes)) {
+      if (keys.has(key)) picked[key] = record.changes[key];
+    }
+    if (Object.keys(picked).length) {
+      filtered.push({...record, changes: picked});
+    }
+  }
+  return filtered;
+}
+
+function replayChanges(chunks, from, to, opts = {}) {
+  const keys = parseChangedKeys(opts.changed);
   const byBase = new Map(chunks.map(chunk => [baseOf(chunk), chunk]));
   const startChunk = byBase.get(chunkBase(from));
   if (!startChunk) throw new Error(`缺少回放块 ${chunkBase(from)}`);
@@ -200,7 +228,7 @@ function replayChanges(chunks, from, to) {
     }
     if (snapshot) state = snapshot;
   }
-  return records;
+  return keys ? filterChangedRecords(records, keys) : records;
 }
 
-module.exports = {HISTORY_CHUNK, applyDiff, chunkBase, chunkRange, describeObject, diffStates, replayChanges, replayState};
+module.exports = {HISTORY_CHUNK, applyDiff, chunkBase, chunkRange, describeObject, diffStates, filterChangedRecords, replayChanges, replayState};

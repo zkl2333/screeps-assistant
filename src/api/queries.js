@@ -260,6 +260,9 @@ async function getRoomHistory(options = {}) {
   const tick = parseTick(options.tick, '--tick');
   if (tick === undefined) throw new Error('history 需要 --tick <tick>（房间回放）；房间统计请用 overview <房间>');
   const to = parseTick(options.to, '--to');
+  if (options.changed !== undefined && to === undefined) {
+    throw new Error('--changed 需要配合 --to 使用');
+  }
   if (to !== undefined) {
     if (to <= tick) throw new Error(`--to 必须大于 --tick（收到 --tick ${tick} --to ${to}）`);
     if (to - tick > HISTORY_MAX_SPAN) throw new Error(`--tick 到 --to 最多相隔 ${HISTORY_MAX_SPAN} tick（收到 ${to - tick}）；缩小范围，或分段查询`);
@@ -269,7 +272,9 @@ async function getRoomHistory(options = {}) {
   for (let base = chunkBase(tick); base <= chunkBase(to ?? tick); base += HISTORY_CHUNK) {
     chunks.push(await fetchHistoryChunk(api, {room: options.room, shard, base, tick: Math.max(tick, base)}));
   }
-  const result = to === undefined ? Object.values(replayState(chunks[0], tick)) : replayChanges(chunks, tick, to);
+  const result = to === undefined
+    ? Object.values(replayState(chunks[0], tick))
+    : replayChanges(chunks, tick, to, {changed: options.changed});
   return withUsernames(result, await resolveUsernames(api, result.map(item => item.user)));
 }
 
