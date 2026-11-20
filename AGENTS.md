@@ -126,9 +126,9 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
 - **操作边界：**
   - 查询和只读分析可直接执行
   - 排查、评估和 review 默认只执行只读操作
-  - Console 表达式由用户显式给出，或由 Agent 根据已确认的目标构造后经用户确认；写入类表达式（改 Memory、执行游戏动作）不得未经确认自行构造并执行
-  - 重生、放弃房间等不可逆游戏操作，执行前必须明确告知影响
-  - Bot 代码发布见上文「代码发布边界」
+  - 不禁止写入能力，但**所有写入操作**（包括写入类 Console 表达式、Memory/Segment 写入、分片 CPU 调整、市场挂单、消息发送/标已读、建筑/旗帜/Intent 等）均须经用户明确授权后方可执行
+  - 重生、放弃房间、代码覆盖等不可逆或高影响操作，执行前必须明确告知影响并获得用户确认
+  - Bot 正式代码发布默认走其自身发布流程（如 CI），除非用户明确授权
 - **探针：** 线上排查先用内置命令（`room --objects`、`memory` 加 `--filter` / `--fields`、`overview`、`history`），读 bot 运行时状态才写 console 探针；探针放 `probes/`（不入库），不要放仓库根目录。
 
 每次处理任务时，优先读取本目录及相关子目录的 `AGENTS.md`，再根据需要查询 Screeps API 和游戏状态。不要把本仓库当成 Bot 的设计仓库或旁路发布通道。
@@ -181,7 +181,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
 
    上游 CLI 要在本仓库目录下运行才能找到 `.screeps.yml`，用 `--server <名字>` 选服务器块（默认 `main`），只用服务器块自身的 token，不认本工具的 `accounts` 和目标覆盖字段。房间和 shard 应显式传入。`gameMapStats` 的 `rooms` 是逗号分隔的房间名列表，`stat` 另外支持 `owner0` 和 `claim0`；`resource` 使用 `screeps-api` 的 `MarketResources` 值；PVP/Warpath 接口的 interval 是独立的 tick 参数。完整命令以 `npx --no-install screeps-api --help` 为准。
 
-上游 CLI 也暴露写入接口。Agent 只能用它的只读方法；禁止经上游 CLI 调用代码提交、Memory/Segment 写入、`userConsole`、建筑/旗帜/Intent、重生/放弃房间、市场写入、消息发送/标记已读或装饰修改等副作用 API。游戏内表达式一律走本工具的 `console` 命令（带请求 ID 匹配和同 ID 去重），不要用上游的 `userConsole`。Bot 代码发布仍只走它自己的发布流程。
+上游 CLI 也暴露写入接口。日常排查只能用只读方法；只有获得用户明确授权时，才可经上游 CLI 或本工具执行代码提交、Memory/Segment 写入、分片 CPU 调整、建筑/旗帜/Intent、重生/放弃房间、市场写入、消息发送/标记已读或装饰修改等副作用 API。游戏内表达式一律走本工具的 `console` 命令（带请求 ID 匹配和同 ID 去重），不要用上游的 `userConsole`。Bot 正式代码发布仍默认走其自身发布流程。
 
 官方房间统计用 `overview <房间>` 查询，字段含义见 [`docs/api/screeps-api.md`](./docs/api/screeps-api.md) 的「官方房间统计」。统计只能说明官方记录的区间数据，不能直接替代完整的房间实时 Energy 收支。
 
