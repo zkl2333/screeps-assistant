@@ -216,7 +216,7 @@ node bin/screeps-assistant.js logs --duration 15 --all-shards --fields shard,tex
 
 有一个包装层作用域例外：用户代码能看到包装函数参数 `c`（表达式源码字符串），因此不要依赖名为 `c` 的全局变量；局部声明或箭头函数参数 `c` 不受影响。
 
-服务器约在 1000 字节拒绝超长表达式；包装层最多占 320 字符，用户代码通常保留约 680 UTF-8 字节。CLI 会在联网前校验长度，并提示缩短/拆分、改用单引号，或必要时用 `--raw`。包装层会用 `global.__sa` 按 ID 缓存结果 100 tick；同一 ID 重发只返回缓存，不重复执行用户代码。
+官方服务端校验 `JSON.stringify(expression).length <= 1024`；包装层最多占约 320 字符，短表达式直接发送，超长表达式在单次 `console`（CLI 与 MCP `screeps_console`）下会自动经 `Memory.__sa_boot_<id>` 单次中转并在执行前删除，若 Bot 清理了未知 `Memory` 键则自动降级为纯 `global` 分片（`--transport chunk` 可显式指定）。仅 `--raw` 与 `--repeat` 保留长度上限预检。包装层会用 `global.__sa` 按 ID 缓存结果 100 tick；同一 ID 重发只返回缓存，不重复执行用户代码。
 
 ```bash
 # Windows / Git Bash 推荐入口
@@ -248,6 +248,20 @@ node bin/screeps-assistant.js console --file probe.js --target main --raw --retr
 - `protocol`：本次 ID 的回包格式或 JSON 解析失败；不会重试。
 - `timeout`：等待期间未收到本次 ID 回包。可能是该 tick 主循环超 CPU 导致服务端丢命令，也可能已执行但回包丢失；错误会说明发送次数和期间的服务端报错。
 - `--repeat` 至少 2 秒；`--times` 为 1～60，给出 `--repeat` 时默认 10。`timeout`/`expression` 记为失败帧后继续，`rejected`/`rate-limit` 立即停止并以非零码退出。stdout 是 JSON Lines，stderr 输出重试进度、Ctrl+C 状态和额度汇总；Ctrl+C 在任一帧开始前到达时不会执行该帧。
+
+### 临时工具空间与收件箱（`tools` / `inbox`）
+
+不修改任何 Bot 代码，把通用只读工具或临时消息放到 `global.__sa` / `Memory.__sa_inbox_*`：
+
+```bash
+node bin/screeps-assistant.js tools inject --target main --shard shard2   # 注入通用只读工具到 global.__sa.t
+node bin/screeps-assistant.js console "__sa.t.cpu()" --target main --shard shard2
+node bin/screeps-assistant.js tools status --target main --shard shard2   # 查看工具与待消费收件箱摘要
+node bin/screeps-assistant.js tools clear --target main --shard shard2
+
+node bin/screeps-assistant.js inbox push --expr '{"cmd":"ping"}' --target main --shard shard2
+node bin/screeps-assistant.js inbox flush --target main --shard shard2  # 一次消费并清空
+```
 
 ### 探针
 

@@ -215,11 +215,11 @@ async function flushInbox(session, opts = {}) {
   });
 }
 
-/** 查询游戏内 global.__sa 临时空间与 Memory 收件箱状态。 */
+/** 查询游戏内 global.__sa 临时空间与 Memory 收件箱状态（附带待消费消息 ID 与时间戳，不拉全量 Memory）。 */
 async function statusToolbox(session, opts = {}) {
   const prefix = opts.prefix || DEFAULT_MEMORY_INBOX_PREFIX;
   assertSafeKey(prefix, 'inbox prefix');
-  const expr = `(function(g){var sa=g.__sa||{},inbox=0;for(var k in Memory){if(k.indexOf("${prefix}")===0)inbox++;}return{tick:Game.time,version:sa.v||null,hasTools:Boolean(sa.t),tools:sa.t?Object.keys(sa.t):[],globalQueue:sa.q?sa.q.length:0,bufferKeys:g.__sa_b?Object.keys(g.__sa_b):[],memoryInbox:inbox};})(global)`;
+  const expr = `(function(g){var sa=g.__sa||{},items=[];for(var k in Memory){if(k.indexOf("${prefix}")===0){var e=Memory[k];items.push({id:e&&e.id||k.slice(${prefix.length}),ts:e&&e.ts||0});}}items.sort(function(a,b){return a.ts-b.ts;});return{tick:Game.time,version:sa.v||null,hasTools:Boolean(sa.t),tools:sa.t?Object.keys(sa.t):[],globalQueue:sa.q?sa.q.length:0,bufferKeys:g.__sa_b?Object.keys(g.__sa_b):[],memoryInbox:items.length,memoryInboxItems:items};})(global)`;
   return session.run(expr, {timeoutMs: opts.timeoutMs, retries: opts.retries});
 }
 

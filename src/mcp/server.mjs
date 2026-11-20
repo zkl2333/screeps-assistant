@@ -2,6 +2,7 @@ import {McpServer} from '@modelcontextprotocol/server';
 import {serveStdio} from '@modelcontextprotocol/server/stdio';
 import {createRequire} from 'node:module';
 import * as z from 'zod/v4';
+import {context} from '../api/client.js';
 import {openConsoleSession, ConsoleRateLimitError, ConsoleTimeoutError} from '../api/console.js';
 import consoleProtocol from '../api/console-protocol.js';
 import toolbox from '../api/toolbox.js';
@@ -134,13 +135,13 @@ function createServer() {
   }
 
   server.registerTool('screeps_console', {
-    description: '执行完整的 Screeps Console JavaScript 表达式并返回结果。表达式可能修改游戏状态；服务端不做只读判断。默认不重试，超时代表结果未知。',
+    description: '执行完整的 Screeps Console JavaScript 表达式并返回结果（超长自动走临时中转）。表达式可能修改游戏状态；服务端不做只读判断。默认不重试，超时代表结果未知。',
     inputSchema: z.object({
       target: targetSchema,
       shard: shardSchema,
       account: accountSchema,
       expression: z.string().min(1).describe('游戏内 Console JavaScript 表达式'),
-      timeoutMs: z.number().int().min(1000).max(60000).default(15000).describe('单次等待回包时间，毫秒'),
+      timeoutMs: z.number().int().min(1000).max(60000).default(25000).describe('单次等待回包时间，毫秒'),
     }).strict(),
     annotations: {readOnlyHint: false, destructiveHint: true, idempotentHint: false},
   }, input => call(async () => {
@@ -152,8 +153,67 @@ function createServer() {
         id: result.id,
         tick: result.tick,
         attempts: result.attempts,
+        transport: result.transport,
+        chunks: result.chunks,
         value: consoleProtocol.unwrapValue(result.value),
       };
+    } finally {
+      await session.close();
+    }
+  }));
+
+  server.registerTool('screeps_tools', {
+    description: '管理游戏内 global.__sa 临时工具空间：status 查看状态与待消费收件箱摘要，inject 注入通用只读工具或自定义脚本，clear 清理临时状态。',
+    inputSchema: z.object({
+      target: targetSchema,
+      shard: shardSchema,
+      account: accountSchema,
+      action: z.enum(['status', 'inject', 'clear']).describe('操作类型'),
+      code: z.string().min(1).optional().describe('action=inject 时可选自定义 JS 代码；省略则注入默认通用工具包'),
+      transport: z.enum(['auto', 'memory', 'chunk']).default('auto').describe('注入传输方式'),
+      timeoutMs: z.number().int().min(1000).max(60000).default(25000).describe('等待回包时间，毫秒'),
+    }).strict(),
+    annotations: {readOnlyHint: false, destructiveHint: true, idempotentHint: false},
+  }, input => call(async () => {
+    const session = await openConsoleSession(options(input));
+    try {
+      if (input.action === 'inject') {
+        return await toolbox.injectToolbox(session, {code: input.code, transport: input.transport, timeoutMs: input.timeoutMs});
+      }
+      if (input.action === 'clear') {
+        const res = await toolbox.clearToolbox(session, {timeoutMs: input.timeoutMs});
+        return consoleProtocol.unwrapValue(res.value);
+      }
+      const res = await toolbox.statusToolbox(session, {timeoutMs: input.timeoutMs});
+      return consoleProtocol.unwrapValue(res.value);
+    } finally {
+      await session.close();
+    }
+  }));
+
+  server.registerTool('screeps_inbox', {
+    description: '临时收件箱通道：push 通过 Memory 顶层前缀键写入消息（不占 console 额度），flush 在游戏内一次性读取并清空。',
+    inputSchema: z.object({
+      target: targetSchema,
+      shard: shardSchema,
+      account: accountSchema,
+      action: z.enum(['push', 'flush']).describe('操作类型'),
+      payload: z.unknown().optional().describe('action=push 时的消息载荷'),
+      id: z.string().regex(/^[a-zA-Z0-9_-]+$/).optional().describe('action=push 时的可选消息 ID'),
+      handlerExpr: z.string().min(1).optional().describe('action=flush 时的可选处理函数表达式，例如 items => items.length'),
+      timeoutMs: z.number().int().min(1000).max(60000).default(25000).describe('action=flush 等待回包时间，毫秒'),
+    }).strict(),
+    annotations: {readOnlyHint: false, destructiveHint: true, idempotentHint: false},
+  }, input => call(async () => {
+    if (input.action === 'push') {
+      if (input.payload === undefined) throw new Error('action=push 需要提供 payload');
+      const {api, shard} = await context(options(input));
+      return toolbox.pushInbox(api, shard, input.payload, {id: input.id});
+    }
+    const session = await openConsoleSession(options(input));
+    try {
+      const res = await toolbox.flushInbox(session, {handlerExpr: input.handlerExpr, timeoutMs: input.timeoutMs});
+      return consoleProtocol.unwrapValue(res.value);
     } finally {
       await session.close();
     }

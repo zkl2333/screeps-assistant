@@ -206,6 +206,7 @@ function createMockSession() {
     await pushInbox(api, 'shard2', {cmd: 'b'}, {id: 'm2', ts: 100});
     const st = await statusToolbox(session);
     assert.equal(st.value.memoryInbox, 2);
+    assert.deepEqual(st.value.memoryInboxItems, [{id: 'm2', ts: 100}, {id: 'm1', ts: 200}]);
 
     const flushed = await flushInbox(session);
     assert.equal(flushed.value.count, 2);

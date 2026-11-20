@@ -85,9 +85,13 @@ assert.ok(sideContext.__sa.newid000);
 const code = 'x'.repeat(100);
 assert.ok(wrapExpression(code, id).length - JSON.stringify(code).length <= 320);
 assert.equal(expressionBytes('½'), 2);
-const exact = 'x'.repeat(MAX_EXPRESSION_BYTES);
+const exact = 'x'.repeat(OFFICIAL_EXPRESSION_LIMIT - 2);
 assertExpressionSize(exact);
-assert.throws(() => assertExpressionSize(exact + 'x'), /表达式过长：实际 1001 字节，上限 1000 字节/);
+assert.throws(() => assertExpressionSize(exact + 'x'), /表达式过长：JSON 序列化后 1025 字符，上限 1024 字符/);
+// 含中文时按 JSON 序列化字符数而非 UTF-8 字节数计算（400 汉字 = 1200 UTF-8 字节，但 JSON 只有 402 字符）。
+assertExpressionSize('中'.repeat(400));
+// 含双引号转义时按 JSON 序列化后字符数拦截。
+assert.throws(() => assertExpressionSize('"' + 'x'.repeat(OFFICIAL_EXPRESSION_LIMIT - 3)), /表达式过长：JSON 序列化后 1025 字符，上限 1024 字符/);
 
 assert.equal(jsonExpressionLength('abc'), 5);
 assert.equal(jsonExpressionLength('a"b'), 6);

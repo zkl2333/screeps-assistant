@@ -137,12 +137,12 @@ function expressionBytes(expr) {
 }
 
 function assertExpressionSize(expr, {wrapped = false} = {}) {
-  const size = expressionBytes(expr);
-  if (size <= MAX_EXPRESSION_BYTES) return;
+  const size = jsonExpressionLength(expr);
+  if (size <= OFFICIAL_EXPRESSION_LIMIT) return;
   const hint = wrapped
-    ? '包装模式额外占用约 300 字节；如表达式本身必须接近 1000 字节，可用 --raw 换回，或用 --relay 经临时缓冲执行；包装后双引号会被转义，尽量使用单引号。'
-    : '请缩短或拆分表达式，或改用 --relay 经临时缓冲执行。';
-  throw new Error(`表达式过长：实际 ${size} 字节，上限 ${MAX_EXPRESSION_BYTES} 字节。${hint}`);
+    ? '包装模式额外占用约 300 字符；常规单次 console 已支持自动中转，如在 --repeat 下使用请缩短表达式或减少双引号/换行转义。'
+    : '请缩短或拆分表达式，或去掉 --raw 使用自动中转。';
+  throw new Error(`表达式过长：JSON 序列化后 ${size} 字符，上限 ${OFFICIAL_EXPRESSION_LIMIT} 字符。${hint}`);
 }
 
 module.exports = {

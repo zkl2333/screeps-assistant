@@ -37,12 +37,13 @@ const {COMMAND_TABLE} = require('../src/commands');
     const tools = response.result.tools;
     const names = tools.map(tool => tool.name);
 
-    // 命令表里每个命令一个工具，外加 console。
-    assert.deepEqual(names, [...COMMAND_TABLE.map(command => `screeps_${command.name}`), 'screeps_console']);
+    // 命令表里每个命令一个工具，外加 console、tools、inbox。
+    assert.deepEqual(names, [...COMMAND_TABLE.map(command => `screeps_${command.name}`), 'screeps_console', 'screeps_tools', 'screeps_inbox']);
+    const writeTools = new Set(['screeps_console', 'screeps_tools', 'screeps_inbox']);
     for (const tool of tools) {
       assert.ok(tool.description?.length > 0, `${tool.name} 缺少 description`);
-      // 命令表里的都是只读查询；console 能改游戏状态，必须标成写入型。
-      const readOnly = tool.name !== 'screeps_console';
+      // 命令表里的都是只读查询；console/tools/inbox 能改游戏状态，必须标成写入型。
+      const readOnly = !writeTools.has(tool.name);
       assert.equal(tool.annotations?.readOnlyHint, readOnly, `${tool.name} 的只读标记不对`);
       assert.equal(tool.annotations?.destructiveHint, !readOnly, `${tool.name} 的写入标记不对`);
     }

@@ -105,7 +105,7 @@ function printConsoleResult(result, args) {
 }
 
 function validateConsoleOptions(args) {
-  const timeoutMs = parseInteger(args.timeout, '--timeout', {min: 1, fallback: 15000});
+  const timeoutMs = parseInteger(args.timeout, '--timeout', {min: 1, fallback: 25000});
   const repeat = args.repeat === undefined ? undefined : parseInteger(args.repeat, '--repeat', {min: 2});
   const times = parseInteger(args.times, '--times', {min: 1, max: 60, fallback: repeat === undefined ? undefined : 10});
   const retries = parseInteger(args.retry, '--retry', {min: 0, fallback: repeat === undefined ? undefined : 0});
@@ -202,7 +202,7 @@ async function runCliTools(args) {
   if (transport !== 'auto' && transport !== 'memory' && transport !== 'chunk') {
     throw new Error(`--transport 只支持 auto、memory 或 chunk，实际收到：${transport}`);
   }
-  const timeoutMs = parseInteger(args.timeout, '--timeout', {min: 1, fallback: 15000});
+  const timeoutMs = parseInteger(args.timeout, '--timeout', {min: 1, fallback: 25000});
   const retries = parseInteger(args.retry, '--retry', {min: 0});
   const opts = options(args);
 
@@ -266,7 +266,7 @@ async function runCliInbox(args) {
     return printResult(res, args);
   }
   if (action === 'flush') {
-    const timeoutMs = parseInteger(args.timeout, '--timeout', {min: 1, fallback: 15000});
+    const timeoutMs = parseInteger(args.timeout, '--timeout', {min: 1, fallback: 25000});
     const retries = parseInteger(args.retry, '--retry', {min: 0, fallback: 0});
     let handlerExpr;
     if (args.file !== undefined || args.expr !== undefined || args._.length > 1) {
