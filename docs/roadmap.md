@@ -19,26 +19,21 @@
 
 - `messages <用户名或 id>`：读一段对话的完整往来（`userMessagesList`）。用户名用索引自带的 users 表解析，之前只能绕过本工具调上游 CLI；输出裁到 `date/type/text/unread`（原回包每方都带整块 badge，整段线程很容易超 MCP 结果上限）。纯 GET，不标已读。
 
+### 已完成（2026-11-26）
+
+- **`console` 防 429 自动降级与 `--arg` 传参**：`transport='auto'` 下中长脚本（≤ 2500 字符）优先走纯 `global.__sa_b` 分片，超长脚本遇 `POST /api/user/memory` 429 或写入失败自动降级分片；CLI 支持可重复 `--arg 名=值`（MCP 支持 `args` 对象）注入变量到表达式作用域；修复 CLI `inbox list`/`push` 缺导入问题；扩充 `__sa.t` 工具包（新增 `stock`、`labs`、`factory`、`intershard`、`powerCreeps`）。
+- **输出过滤管道与 CLI 易用性**：`--filter` 支持 `|` 多值 OR、`^=` 前缀、`*=` 包含与数值比较（`<` `<=` `>` `>=`）；`--pick` 支持逗号多路径；`--fields` 兼容普通单对象；新增通用 `--limit`；支持 `--server` / `--eval` / `--duration 10s` 等直觉别名与拼写提示；`helpText()` 改为从 `COMMAND_TABLE` 自动生成。
+- **多分片 / 多房间 / 批量查询**：`--shard shard2,shard3,shardX` 与 `--all-shards` 覆盖 `summary`、`rooms`、`memory`、`segment`、`market`、`stock`、`console`；`room` 支持逗号多房间；`market --resource` 支持逗号多品批量查盘口。
+- **帝国资源盘点与诊断**：新增 `stock`（纯 HTTP 0 console 额度汇总 storage/terminal/lab/factory 库存与 Boost）；加深 `room` 摘要（storage/terminal 全资源、lab/factory/nuker/spawning/safeMode 详情）；`segment` 默认自动 JSON 解码并支持 `--stats` 体积占比与 `--raw`；`history` 新增 `--best-effort` 自动截断未落盘块并跳过缺失 404 块；`status --ping` 联网诊断 `/api/version`、鉴权与 tick 推进；`authMe` 5 分钟非敏感本地缓存。
+- **MCP 体验对齐**：落地常驻 console WebSocket 会话池（空闲自动回收、断线自动重建），`screeps_console` 对齐 `args`、`allShards`、`transport` 及 `pick`/`filter`/`fields`/`limit` 输出裁剪。
+- **实时事件订阅与唤醒引擎（`watch`）**：基于官方 WebSocket（`room:` / `memory:` / `console` / `code` / `newMessage` / `cpu`，0 轮询、0 console 额度）实现多路组合事件订阅；支持 `creep-enter`/`creep-leave`/`creep-die`/`hostile-enter`/`hostile-cleared`/`structure-destroyed`/`damage`/`low-hp`/`nuke`/`controller` 实时差分、`--memory` + `--until` 状态机等待、`--check-initial` 首帧检查、默认单次命中即退出唤醒调用方，以及 `--stream` + `--cooldown` + `--exec` 常驻哨兵回调模式。
+
 ## 待做
 
-### 1. `--arg` 传参（长表达式中转与 `chunk` 分片已完成）
+### 1. 大结果真分页 / 流式导出的按需评估
 
-- **已完成**：单次 `console`（CLI 与 MCP `screeps_console`）已支持自动中转超长表达式（`Memory.__sa_boot_<id>` 单次引导，被清理时自动降级 `global.__sa_b` 分片）。
-- **待做**：`--arg 名=值`（可重复；值按 JSON 解析，不行就当字符串）把参数注入表达式作用域，同一个探针文件可以复用。
+- MCP 超长结果目前靠 `pick` / `filter` / `fields` / `limit` 裁剪；如后续仍有超大对象完整翻页需求再单独设计游标分页。
 
-### 2. `room` 摘要加深（已完成 2026-11-20）
+### 2. 工具级受控写入命令（按需扩展）
 
-- **已实现**：去掉恒为空的 `role`/`squadName`，补齐己方/敌方 creep `ttl`、`hits`/`hitsMax`、敌方 `username`、`controller.ownerName` 与 `ticksToDowngrade`、`energyAvailable`/`energyCapacityAvailable`、`sources`/`mineral` 与 `structures` 血量/数量概览。
-
-### 3. `code --verify <路径>`（已完成 2026-11-20）
-
-- **已实现**：支持 `--verify <文件或目录>`，下载线上模块与本地构建产物逐一比对字节长度和 SHA-256 哈希（CLI 与 MCP `screeps_code` 同步支持）。只读，不写线上。
-
-### 4. MCP 补齐（已完成 2026-11-07，剩常驻 socket）
-
-- **已完成**：查询命令收进命令表 `src/commands.js`，CLI 与 MCP 同源；工具名 `screeps_<命令名>`，参数名取 CLI flag 的 camelCase；`room --objects`、`overview`、`history`、`logs`、`map`、`code`、`market`、`messages`、`summary`、`world` 全部补齐；`pick` / `filter` / `fields` 在 MCP 上通用，超长结果靠它们收窄；`logs` 单次封顶 60 秒。
-- **还差**：常驻 socket，避免每次 console 调用都重连。超长结果目前是报错不返回，若以后要真分页再单独开条目。
-
-### 5. `history --changed`（已完成 2026-11-20）
-
-- **已实现**：`history --to` 支持 `--changed hits,store`，只保留 `changes` 里含这些键的记录并裁剪 `changes`，默认行为不变（CLI 与 MCP `screeps_history` 同步支持）。
+- 遵循根目录 `README.md` 与 `AGENTS.md` 的「安全边界」：工具级持久化写入统一采用 **Dry-run 预览 + `--confirm`（MCP `confirm: true`）二次确认**，所有写入须经用户明确授权。

@@ -41,9 +41,13 @@ node bin/screeps-assistant.js summary --target main --shard shard2
 node bin/screeps-assistant.js account --target main --account alt
 node bin/screeps-assistant.js rooms --target season
 
-# 房间：摘要；--objects 输出全部对象（不需要视野）
-node bin/screeps-assistant.js room W1N1 --target main --shard shard2
-node bin/screeps-assistant.js room W1N1 --objects --filter type=tower --fields _id,store.energy --target main --shard shard2
+# 房间与帝国资源盘点（0 console 额度）
+node bin/screeps-assistant.js room W1N1,W2N2 --target main --shard shard2
+node bin/screeps-assistant.js room W1N1 --objects --filter "type=tower|creep" --fields _id,type,store.energy --limit 30 --target main --shard shard2
+node bin/screeps-assistant.js stock --target main --shard shard2 --boosts
+
+# 实时事件订阅唤醒（WebSocket，0 轮询、0 console 额度）
+node bin/screeps-assistant.js watch --room W1N1 --on hostile-enter,structure-destroyed --timeout 15m --target main --shard shard2
 
 # 官方房间统计
 node bin/screeps-assistant.js overview W1N1 --interval 180 --target main --shard shard2
@@ -79,4 +83,4 @@ node tools/live/websocket.js --target main --account alt
 - **环境隔离**：只连 `.screeps.yml` 里配置的服务器，分片按目标的分片列表校验，避免把请求发错环境；各目标使用独立的服务器块与代码分支。
 - **查询只读**：所有查询命令只调用读取 API，不产生游戏副作用。
 - **console 透传**：`console` 执行用户显式给出的表达式并返回输出，能力等同官方游戏内控制台；写入与否由表达式决定，工具不代写、不审查。默认按同一请求 ID 重试 2 次，游戏内按 ID 去重；写入类表达式建议 `--retry 0`。
-- **无工具级写入**：不提供代码上传、市场交易、消息发送、建筑/旗帜/Intent 创建、重生或放弃房间的命令；Bot 的代码发布请走它自己的发布流程（如 CI）。
+- **受控写入（需明确授权）**：所有产生游戏状态或账号变更的写入操作须经用户明确授权；工具级持久化写入统一采用 Dry-run 预览 + `--confirm`（MCP `confirm: true`）二次确认；Bot 的正式代码发布默认走它自己的发布流程（如 CI）。

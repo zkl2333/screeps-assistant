@@ -8,7 +8,7 @@ Screeps 外部读取、游戏内表达式执行、实时连接、代码备份和
 
 所有命令统一用 `node bin/screeps-assistant.js <命令>`，在任何目录、任何 shell 下行为一致；`npm link` 后也可以直接用 `screeps-assistant <命令>`。`node bin/screeps-assistant.js --help` 列出全部命令和参数。
 
-本工具没封装的只读端点（如市场行情 `gameMarketOrders`、资金流水 `userMoneyHistory`）再用上游 CLI 兜底：`npx --no-install screeps-api call <方法> ...`，只调用只读方法。
+本工具没封装的只读端点（如地图统计 `gameMapStats`、战况 `warpathBattles`）再用上游 CLI 兜底：`npx --no-install screeps-api call <方法> ...`，只调用只读方法。
 
 > **Windows 警告：表达式不要走任何会经过 cmd.exe 的命令。** cmd.exe 在 node 启动前就把 `>`（含 `=>`）、`|`、`&`、`^`、`%` 当特殊字符，导致表达式截断，或在仓库里生成 `0)`、`({n` 这种垃圾文件。仓库**不提供** `npm run query` 之类的脚本入口就是为了避开这层（npm 在 Windows 默认用 cmd.exe 跑 scripts）。请直接执行 `node bin/screeps-assistant.js console --file probe.js`，或用 stdin：`--file -`。Git Bash 会把以 `/` 开头的参数改写成路径，表达式同样建议来自文件或 stdin。
 
@@ -88,11 +88,16 @@ node bin/screeps-assistant.js account --target main
 node bin/screeps-assistant.js shards --target main
 node bin/screeps-assistant.js rooms --target main --shard shardX
 
-# 房间摘要（房间名可写位置参数或 --room）
-node bin/screeps-assistant.js room W1N1 --target main --shard shard2
+# 房间摘要（支持逗号多房间，含 storage/terminal/lab/factory/nuker 详情）与 50x50 战局图
+node bin/screeps-assistant.js room W1N1,W2N2 --target main --shard shard2
+node bin/screeps-assistant.js room W1N1 --ascii --target main --shard shard2
+
+# 帝国/分片资源与设施盘点（0 console 额度；省略房间查全分片己方房间）
+node bin/screeps-assistant.js stock --target main --shard shard2,shard3,shardX --boosts
+node bin/screeps-assistant.js stock W1N1 --resource energy,XGH2O --target main --shard shard2
 
 # 房间全部对象：不需要视野，不占 console 额度
-node bin/screeps-assistant.js room W1N1 --objects --filter type=creep --fields name,x,y,hits,fatigue,username --target main --shard shard2
+node bin/screeps-assistant.js room W1N1 --objects --filter "type=creep|tower,hits<5000" --fields name,type,x,y,hits --limit 30 --target main --shard shard2
 
 # 官方房间统计
 node bin/screeps-assistant.js overview W1N1 --target main --shard shard2
@@ -100,22 +105,33 @@ node bin/screeps-assistant.js overview W1N1 --interval 180 --stat creepsLost --t
 node bin/screeps-assistant.js overview W1N1 --pick stats --fields total --compact --target main --shard shard2
 node bin/screeps-assistant.js overview W1N1 --tick 77950310 --target main --shard shard2
 
-# 房间回放（官方 room-history，任意房间可查）：某个 tick 的房间现场，或一段 tick 内每个对象的变化
+# 房间回放与事故时间线（官方 room-history，任意房间可查）
 node bin/screeps-assistant.js history W1N1 --tick 77949750 --filter type=creep --fields name,username,x,y,hits --target main --shard shard2
-node bin/screeps-assistant.js history W1N1 --tick 77949750 --to 77949780 --filter type=creep --fields tick,op,name,x,y,changes --target main --shard shard2
+node bin/screeps-assistant.js history W1N1 --tick 77949750 --to 77949950 --changed hits,store --best-effort --target main --shard shard2
+node bin/screeps-assistant.js incident W1N1 --tick 77949750 --to 77949950 --target main --shard shard2
 
-# 日志（订阅 console 事件流，只听不发表达式）：发布后盯 2 分钟有没有新报错 / 看某个模块在打什么 / 一行一条
+# 日志（订阅 console 事件流，只听不发表达式）、无侵入 CPU 采样与实时事件订阅唤醒（watch）
 node bin/screeps-assistant.js logs --errors --duration 120 --target main --shard shard2
-node bin/screeps-assistant.js logs --duration 30 --grep spawn --target main --shard shard2
-node bin/screeps-assistant.js logs --duration 20 --text --target main --shard shard2
+node bin/screeps-assistant.js logs --duration 30s --grep spawn --text --target main --shard shard2
+node bin/screeps-assistant.js cpu --duration 20s --target main --shard shard2
+node bin/screeps-assistant.js watch --room E49N36 --on creep-enter,structure-destroyed,creep-die --match "name^=Assault_|type=spawn" --timeout 15m --target main --shard shardX
+node bin/screeps-assistant.js watch --memory "missions.loot:E49N34" --check-initial --timeout 20m --target main --shard shardX
+node bin/screeps-assistant.js watch --room E48N32,E45N33 --on hostile-enter,nuke --console --errors --stream --cooldown 30s --target main --shard shardX
 
-# Memory（路径可用位置参数或 --path；省略即查整个 Memory）与 Segment
+# Memory（路径可用位置参数或 --path；支持 --stats 体积排行与多分片）与 Segment（默认自动 JSON 解码）
 node bin/screeps-assistant.js memory rooms.W1N1 --target main --shard shard2
-node bin/screeps-assistant.js segment --id 0,1 --target main --shard shard2
+node bin/screeps-assistant.js memory --stats --target main --shard shard2
+node bin/screeps-assistant.js segment --id 99 --stats --target main --shard shard2,shard3,shardX
 
-# 代码模块、市场挂单、消息索引
-node bin/screeps-assistant.js code --target main --branch main
-node bin/screeps-assistant.js market --target main --shard shard2
+# 代码核对、市场行情、资金流水、战况监控、玩家资料与环境连通诊断
+node bin/screeps-assistant.js code --verify dist/ --target main --branch main
+node bin/screeps-assistant.js market --resource energy,ops,pixel --target main --shard shard2
+node bin/screeps-assistant.js money --page 0 --target main
+node bin/screeps-assistant.js pvp --interval 100 --all-shards --target main
+node bin/screeps-assistant.js nukes --all-shards --target main
+node bin/screeps-assistant.js player <用户名> --target main
+node bin/screeps-assistant.js shards --cpu --target main
+node bin/screeps-assistant.js status --ping --target pserver
 node bin/screeps-assistant.js messages --target main
 
 # 某段对话的完整往来（用户名或用户 id 都行；纯读，不会标记已读）
@@ -208,6 +224,19 @@ node bin/screeps-assistant.js logs --duration 15 --all-shards --fields shard,tex
 - **日志里的 tick 与 `history` 的对应关系**：日志 tick N 是 bot 运行时的 `Game.time = N`，它看到的现场是回放 tick `N-1`，它发出的意图的结果在回放 tick `N`。所以拿到一行日志的 tick，可以接 `history <房间> --tick <N-1>` 看 bot 当时看到的房间，用 `--tick <N>` 看它这一步的结果；
 - 表达式回包（`messages.results`）不属于 bot 日志，会被忽略；清理后为空的行会被跳过；一条日志内部的换行原样保留，所以 `--text` 下一个条目可能占多行。
 
+## 实时订阅与事件唤醒（watch）
+
+`watch` 基于官方 WebSocket 多路实时推送（0 轮询、0 console 额度），可替代高频定时轮询，在事件发生瞬间输出结构化 JSON 并退出进程唤醒调用方（或加 `--stream` 常驻输出 JSONL）。
+
+- **可组合订阅源（任一命中即触发）**：
+  - `--room <房间,...>`（不需要视野）+ `--on`：支持 `creep-enter`、`creep-leave`、`creep-die`、`hostile-enter`、`hostile-cleared`、`structure-destroyed`、`damage`、`low-hp`、`nuke`、`controller`、`all`；
+  - `--memory <路径,...>` + `--until <条件>`：监听官方 `memory:` 频道，值变化或满足条件即触发；
+  - `--console` / `--grep <词>` / `--errors`：监听 bot 日志与异常流；
+  - `--code`：监听代码部署更新（CI 上线瞬间唤醒）；
+  - `--messages`：监听游戏内新私信；
+  - `--cpu-above <数值>`：监听单 tick CPU 越线告警。
+- **控制参数**：`--match`（复用 `=`/`!=`/`|`/`^=`/`*=`/`<` 条件过滤）、`--check-initial`（检查首帧快照防竞态）、`--hp-below`（`low-hp` 阈值：≤1 为比例，>1 为绝对值）、`--timeout`（支持 `30s`/`15m`/`1h`，CLI 默认 300s 最高 2h，MCP 封顶 60s）、`--count`（默认 1）、`--cooldown`（同类事件冷却防抖）；CLI 额外支持 `--stream`（逐行 JSONL）与 `--exec <命令>`（事件 JSON 经 stdin 和 `SCREEPS_WATCH_EVENT` 传入外部回调）。
+
 ## Console 表达式与稳定回包
 
 表达式来源三选一：位置参数（按空格拼回）、`--expr <表达式>`、`--file <路径或探针名>`；`--file -` 从 stdin 读取。文件按 UTF-8 处理并去 BOM/首尾空白。最推荐文件和 stdin，可完整保留箭头函数、管道符、正则和多行代码。
@@ -216,7 +245,7 @@ node bin/screeps-assistant.js logs --duration 15 --all-shards --fields shard,tex
 
 有一个包装层作用域例外：用户代码能看到包装函数参数 `c`（表达式源码字符串），因此不要依赖名为 `c` 的全局变量；局部声明或箭头函数参数 `c` 不受影响。
 
-官方服务端校验 `JSON.stringify(expression).length <= 1024`；包装层最多占约 320 字符，短表达式直接发送，超长表达式在单次 `console`（CLI 与 MCP `screeps_console`）下会自动经 `Memory.__sa_boot_<id>` 单次中转并在执行前删除，若 Bot 清理了未知 `Memory` 键则自动降级为纯 `global` 分片（`--transport chunk` 可显式指定）。仅 `--raw` 与 `--repeat` 保留长度上限预检。包装层会用 `global.__sa` 按 ID 缓存结果 100 tick；同一 ID 重发只返回缓存，不重复执行用户代码。
+官方服务端校验 `JSON.stringify(expression).length <= 1024`；包装层最多占约 320 字符，短表达式直接发送。超长表达式在单次 `console`（CLI 与 MCP `screeps_console`）下默认 `transport=auto`：**中长表达式（≤ 2500 字符）优先走纯 `global.__sa_b` 分片**（保护限流极严的 `POST /api/user/memory`），超长脚本走 `Memory.__sa_boot_<id>` 单次中转并在执行前删除，遇 429 或被 Bot 清理时自动降级分片（`--transport chunk` / `--transport memory` 可显式指定）。支持 `--arg 名=值`（可重复，值优先按 JSON 解析，MCP 为 `args`）注入变量到表达式作用域，并支持 `--shard shard2,shard3,shardX` / `--all-shards` 跨分片批量执行。仅 `--raw` 与 `--repeat` 保留长度上限预检。包装层会用 `global.__sa` 按 ID 缓存结果 100 tick；同一 ID 重发只返回缓存，不重复执行用户代码。
 
 ```bash
 # Windows / Git Bash 推荐入口
@@ -275,12 +304,12 @@ node bin/screeps-assistant.js console --file my-probe --target main --shard shar
 
 ## 输出选项
 
-`--compact` 将 JSON 压缩为单行；默认仍为 2 空格缩进。`--pick <路径>` 先取结果的子路径，之后的 `--filter` / `--fields` 作用于取出的部分。`--filter` 支持 `路径=值`、`路径!=值` 和点号路径，多条件用逗号分隔且为“且”。`--fields` 对数组元素或对象条目保留指定路径，输出键名保留路径原文。
+`--compact` 将 JSON 压缩为单行；默认仍为 2 空格缩进。`--pick <路径,...>` 先取结果子路径（支持逗号多路径），之后的 `--filter` / `--fields` / `--limit` 作用于取出的部分。`--filter` 支持 `=`、`!=`（右侧支持 `|` 多值 OR，如 `type=spawn|creep`）、`^=` 前缀、`*=` 包含（不区分大小写）以及 `<`、`<=`、`>`、`>=` 数值比较，多条件用逗号分隔且为“且”。`--fields` 支持数组、对象集合和普通对象，输出键名保留路径原文。`--limit <N>` 截断数组或对象集合前 N 项。
 
 ```bash
-node bin/screeps-assistant.js memory creeps --target season --filter role=harvester --fields role,home --compact
+node bin/screeps-assistant.js memory creeps --target season --filter "role=harvester|upgrader" --fields role,home --limit 20 --compact
 node bin/screeps-assistant.js overview W1N1 --target main --shard shard2 --pick stats --fields total
-node bin/screeps-assistant.js room W1N1 --target main --shard shard2 --pick summary.hostileCreeps
+node bin/screeps-assistant.js room W1N1 --target main --shard shard2 --pick summary.controller,summary.spawns
 ```
 
 `memory creeps` 返回的是「creep 名 → 该 creep 的 memory」对象集合，对象过滤会保留原键，所以 creep 名在键上。示例里的 `role`、`home` 只是常见字段名，实际取决于你的 Bot 往 creep Memory 里写了什么。
@@ -295,16 +324,15 @@ node /path/to/screeps-assistant/src/mcp/server.mjs
 
 `.screeps.yml` 按仓库位置读取，不依赖启动目录。MCP 工具直接调用 API，不经过 shell，也不启动 CLI 子进程。
 
-**工具名就是 `screeps_<CLI 命令名>`**：CLI 的每个查询命令都对应一个 MCP 工具（`screeps_summary`、`screeps_rooms`、`screeps_room`、`screeps_overview`、`screeps_history`、`screeps_logs`、`screeps_memory`、`screeps_segment`、`screeps_code`、`screeps_market`、`screeps_messages`、`screeps_shards`、`screeps_world`、`screeps_map`、`screeps_status`、`screeps_account`），外加能改游戏状态的 `screeps_console`。名字和参数都来自同一张命令表 [`src/commands.js`](src/commands.js)，CLI 和 MCP 不会再各写一份。
+**工具名就是 `screeps_<CLI 命令名>`**：命令表 [`src/commands.js`](src/commands.js) 里的每个只读查询命令都自动注册为同名 MCP 工具（共 24 个：`screeps_summary`、`screeps_account`、`screeps_rooms`、`screeps_room`、`screeps_stock`、`screeps_overview`、`screeps_history`、`screeps_incident`、`screeps_cpu`、`screeps_logs`、`screeps_watch`、`screeps_memory`、`screeps_segment`、`screeps_code`、`screeps_market`、`screeps_pvp`、`screeps_nukes`、`screeps_money`、`screeps_player`、`screeps_messages`、`screeps_shards`、`screeps_world`、`screeps_map`、`screeps_status`），外加 3 个可改游戏状态的工具：`screeps_console`、`screeps_tools`、`screeps_inbox`。查询命令的名字和参数都来自同一张命令表，CLI 和 MCP 不会各写一份。
 
-参数名是 CLI flag 的 camelCase 形式：`--all-shards` → `allShards`、`--summary-only` → `summaryOnly`、`--cache-ttl` → `cacheTtl`。`--objects` 这类切换形态的 flag 也照搬成布尔参数（`screeps_room` 加 `objects: true`）。三个输出选项在所有工具上通用：`pick`、`filter`、`fields`，用来把大结果压到返回上限以内。
+参数名是 CLI flag 的 camelCase 形式：`--all-shards` → `allShards`、`--best-effort` → `bestEffort`、`--check-initial` → `checkInitial`、`--summary-only` → `summaryOnly`。`--objects` 这类切换形态的 flag 也照搬成布尔参数（`screeps_room` 加 `objects: true`）。四个输出选项在查询工具与 `screeps_console` 上通用：`pick`、`filter`、`fields`、`limit`，用来把大结果压到返回上限以内。
 
-两处 MCP 与 CLI 不同，都是调用形态决定的：
+MCP 与 CLI 的主要差异（均由调用形态与安全边界决定）：
 
-- `logs` 是阻塞式监听，MCP 单次调用时长封顶 60 秒（CLI 可到 600 秒）；
-- 结果超过 25000 字符直接报错不返回，需要用 `pick` / `filter` / `fields` 收窄——`room --objects` 这种整房对象列表几乎一定要带 `filter` 或 `fields`。
-
-Console 传入的是完整游戏内 JavaScript，默认不重试，超时表示执行结果未知。
+- 阻塞式监听工具（`screeps_logs`、`screeps_cpu`、`screeps_watch`）在 MCP 中单次时长均封顶 **60 秒**（CLI 中 `logs`/`cpu` 可到 600 秒，`watch` 可到 7200 秒）；CLI 独有的持续流/本地 shell 回调参数（`watch --stream` / `--exec`、`logs --text`）不向 MCP 暴露；
+- 结果超过 25000 字符直接报错不返回，需要用 `pick` / `filter` / `fields` / `limit` 收窄——`room --objects` 这种整房对象列表几乎一定要带 `filter`、`fields` 或 `limit`；
+- `screeps_console`、`screeps_tools`、`screeps_inbox` 复用按 `(target, shard, account)` 维护的**常驻 WebSocket 会话池**（空闲 180 秒自动回收、断线自动重建），无需每次重连；`screeps_console` 支持 `args`（对应 CLI `--arg`）、`allShards` 与 `transport`，默认不重试，超时表示执行结果未知。
 
 不支持 MCP、只能执行命令的智能体平台（例如云端沙箱里的 Agent）直接使用本 CLI。简单表达式可以用 `--expr`；复杂表达式使用 stdin：
 

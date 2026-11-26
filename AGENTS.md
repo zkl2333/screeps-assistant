@@ -39,19 +39,27 @@
 npm ci
 
 # 查询（只读）
-node bin/screeps-assistant.js summary --target main --shard shard2
-node bin/screeps-assistant.js room W1N1 --target main --shard shard2              # 房间摘要
-node bin/screeps-assistant.js room W1N1 --objects --filter type=creep --fields name,x,y,hits,fatigue --target main --shard shard2  # 全部对象，不需要视野
+node bin/screeps-assistant.js summary --target main --shard shard2,shard3,shardX   # 支持逗号多分片或 --all-shards
+node bin/screeps-assistant.js room W1N1,W2N2 --target main --shard shard2          # 房间摘要（含 storage/terminal/lab/factory/nuker，支持多房）
+node bin/screeps-assistant.js stock --target main --shard shard2 --boosts          # 帝国/分片资源与 Boost 盘点（0 console 额度）
+node bin/screeps-assistant.js room W1N1 --objects --filter "type=creep|tower" --fields name,type,x,y,hits --limit 30 --target main --shard shard2
 node bin/screeps-assistant.js overview W1N1 --interval 180 --target main --shard shard2  # 官方房间统计
-node bin/screeps-assistant.js memory rooms.W1N1 --target main --shard shard2      # 路径用位置参数；省略路径即查根
-node bin/screeps-assistant.js segment --id 0 --target main --shard shard2
-node bin/screeps-assistant.js code --target ptr                                     # 核对 PTR 上的代码分支
-node bin/screeps-assistant.js world --target season                                 # 环境概况：赛季能力、反应堆、世界尺寸
-node bin/screeps-assistant.js map --target main --shard shard2 --room W1N1 --ascii  # 文字地形图
+node bin/screeps-assistant.js incident W1N1 --tick 77949750 --to 77949950 --target main --shard shard2  # 战后事故时间线
+node bin/screeps-assistant.js memory rooms.W1N1 --target main --shard shard2       # 路径用位置参数；--stats 体积体检
+node bin/screeps-assistant.js segment --id 99 --stats --target main --shard shard2 # 自动 JSON 解码（--raw 保留原文）
+node bin/screeps-assistant.js code --verify dist/ --target ptr                     # 核对线上代码分支与本地产物 SHA-256
+node bin/screeps-assistant.js market --resource energy,ops,pixel --target main --shard shard2  # 多品盘口摘要
+node bin/screeps-assistant.js money --page 0 --target main                         # Credit 资金流水
+node bin/screeps-assistant.js pvp --all-shards --target main                       # 最近 PVP 交火（核弹用 nukes）
+node bin/screeps-assistant.js cpu --duration 20s --target main --shard shard2      # 外部 WebSocket CPU 采样
+node bin/screeps-assistant.js watch --room E49N36 --on creep-enter,structure-destroyed,creep-die --match "name^=Assault_|type=spawn" --timeout 15m --target main --shard shardX # 实时 WS 事件订阅唤醒（0 轮询、0 console 额度）
+node bin/screeps-assistant.js status --ping --target pserver                       # 联网诊断连通性、鉴权与 tick 推进
+node bin/screeps-assistant.js world --target season                                # 环境概况：赛季能力、反应堆、世界尺寸
+node bin/screeps-assistant.js map --target main --shard shard2 --room W1N1 --ascii # 文字地形图
 
-# 游戏内表达式（探针放 probes/，--file 可直接写探针名）
-node bin/screeps-assistant.js console --expr "Game.time" --target main --shard shard2
-node bin/screeps-assistant.js console --file my-probe --target main --shard shard2
+# 游戏内表达式（探针放 probes/，--file 可直接写探针名，支持 --arg 传参与多分片）
+node bin/screeps-assistant.js console --expr "Game.time" --target main --shard shard2,shard3,shardX
+node bin/screeps-assistant.js console --file my-probe --arg room=W1N1 --arg limit=5 --target main --shard shard2
 
 # 本地验证
 npm test
@@ -151,25 +159,28 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
 
 1. **本工具的 CLI 和 MCP 是主入口。** 目标、分片、多账号和输出选项（`--pick` / `--filter` / `--fields` / `--compact`）在所有命令上一致。已封装的端点不要再走上游 CLI：
 
-   查询命令只在 `src/commands.js` 的命令表里登记一次，CLI 和 MCP 都从它生成：MCP 工具名固定为 `screeps_<命令名>`，参数名是 CLI flag 的 camelCase 形式（`--all-shards` → `allShards`）。**加命令或加参数只改命令表**，不要去 bin 或 `src/mcp/server.mjs` 里另写一份；表外的只有 `console`（带请求 ID 和重试）和 `help`。
+   查询命令只在 `src/commands.js` 的命令表里登记一次，CLI 和 MCP 都从它生成：MCP 工具名固定为 `screeps_<命令名>`，参数名是 CLI flag 的 camelCase 形式（`--all-shards` → `allShards`）。**加命令或加参数只改命令表**，不要去 bin 或 `src/mcp/server.mjs` 里另写一份；表外的只有 `console`（带请求 ID、重试与超长分片）、`tools`、`inbox` 和 `help`（CLI 独有）。
 
    | 上游方法 | 本工具命令 |
    |---|---|
    | `gameTime`、`gameWorldSize` | `world` |
-   | `authMe` | `account` |
-   | `userRooms` | `rooms` |
-   | `gameRoomObjects` | `room <房间> --objects`（摘要用 `room <房间>`） |
+   | `authMe` | `account` / `status --ping` |
+   | `userRooms` | `rooms` / `stock`（帝国资源与设施盘点） |
+   | `gameRoomObjects` | `room <房间> --objects`（摘要用 `room <房间>`，支持逗号多房与 `--ascii`） |
    | `gameRoomOverview` | `overview <房间>` |
-   | `history`（房间回放） | `history <房间> --tick <tick> [--to <tick>]` |
-   | console 实时流（socket `console` 订阅） | `logs [--errors] [--duration <秒>] [--grep <关键词>]` |
-   | `userMemoryGet` | `memory <路径>` |
-   | `userMemorySegmentGet` | `segment --id <id>` |
-   | `userCodeGet` | `code` |
-   | `gameMarketMyOrders` | `market` |
+   | `history`（房间回放） | `history <房间> --tick <tick> [--to <tick>] [--changed ...] [--best-effort]` / `incident <房间>` |
+   | console 实时流 / cpu 实时流 / 房间与 Memory 实时事件订阅 | `logs [--errors] [--duration <秒>] [--grep <关键词>]` / `cpu [--duration <秒>]` / `watch [--room ...] [--memory ...] [--console] [--code] [--messages]` |
+   | `userMemoryGet` | `memory <路径> [--stats]` |
+   | `userMemorySegmentGet` | `segment --id <id> [--stats] [--raw]` |
+   | `userCodeGet` | `code [--verify <本地路径>]` |
+   | `gameMarketMyOrders`、`gameMarketOrders`、`gameMarketOrdersIndex`、`gameMarketStats` | `market [--resource <品名,...>] [--index]` |
+   | `userMoneyHistory` | `money [--page <页码>]` |
+   | `userFind` | `player <用户名>` |
+   | `experimentalPvp`、`experimentalNukes` | `pvp` / `nukes` |
    | `userMessagesIndex`、`userMessagesUnreadCount` | `messages` |
    | `userMessagesList`（某段对话全文） | `messages <用户名或 id>` |
-   | `gameShardsInfo` | `shards` |
-   | `gameRoomStatus`、`gameRoomTerrainUnencoded` | `map` |
+   | `gameShardsInfo` | `shards [--cpu]` |
+   | `gameRoomStatus`、`gameRoomTerrainUnencoded` | `map [--rank]` |
 
 2. **上游 `screeps-api` CLI 只做兜底**，用于本工具没封装的只读端点：
 
@@ -177,7 +188,7 @@ Token 获取：https://screeps.com → 账户设置 → Auth Tokens → 生成�
    npx --no-install screeps-api call <method> ...
    ```
 
-   常用的未封装只读方法：市场 `gameMarketOrdersIndex`、`gameMarketOrders`、`gameMarketStats`、`userMoneyHistory`；地图 `gameMapStats`、`gameRoomTerrain`、`gameRoomDecorations`；实验数据 `experimentalPvp`、`experimentalNukes`、`warpathBattles`。
+   常用的未封装只读方法：`gameMapStats`、`gameRoomTerrain`、`gameRoomDecorations`、`warpathBattles`。
 
    上游 CLI 要在本仓库目录下运行才能找到 `.screeps.yml`，用 `--server <名字>` 选服务器块（默认 `main`），只用服务器块自身的 token，不认本工具的 `accounts` 和目标覆盖字段。房间和 shard 应显式传入。`gameMapStats` 的 `rooms` 是逗号分隔的房间名列表，`stat` 另外支持 `owner0` 和 `claim0`；`resource` 使用 `screeps-api` 的 `MarketResources` 值；PVP/Warpath 接口的 interval 是独立的 tick 参数。完整命令以 `npx --no-install screeps-api --help` 为准。
 
