@@ -226,5 +226,59 @@ function createMockSession() {
     assert.equal(memory.__sa_inbox_m4, undefined);
   }
 
+  // 2c. auto 模式下中长脚本（<= AUTO_CHUNK_MAX_CHARS）优先 chunk，不消耗 POST /api/user/memory 限流。
+  {
+    const {session, memorySetCalls, consoleCalls} = createMockSession();
+    const midExpr = Array.from({length: 80}, (_, i) => `var m${i} = ${i};`).join('') + 'm79';
+    const res = await runLargeConsole(session, midExpr);
+    assert.equal(res.transport, 'chunk');
+    assert.equal(memorySetCalls.length, 0);
+    assert.ok(consoleCalls.length > 1);
+    assert.equal(res.value, 79);
+  }
+
+  // 2d. auto 模式下超长脚本（> AUTO_CHUNK_MAX_CHARS）遇 POST /api/user/memory 429 自动降级 chunk。
+  {
+    const {session, api} = createMockSession();
+    let memAttempts = 0;
+    api.userMemorySet = async () => {
+      memAttempts += 1;
+      const err = new Error('Request failed with status code 429');
+      err.status = 429;
+      throw err;
+    };
+    const hugeExpr = Array.from({length: 260}, (_, i) => `var h${i} = ${i};`).join('') + 'h259';
+    assert.ok(hugeExpr.length > 2500);
+    const res = await runLargeConsole(session, hugeExpr);
+    assert.equal(memAttempts, 1);
+    assert.equal(res.transport, 'chunk');
+    assert.equal(res.value, 259);
+  }
+
+  // 4b. 工具包 v2 新增只读方法（stock / labs / factory / intershard / powerCreeps）。
+  {
+    const {session, context} = createMockSession();
+    context.Game.shard = {name: 'shard2'};
+    context.Game.powerCreeps = {op1: {name: 'op1', className: 'operator', level: 5, shard: 'shard2', room: {name: 'W1N1'}, ticksToLive: 3000, powers: {}}};
+    context.InterShardMemory = {
+      getLocal: () => JSON.stringify({hello: 's2'}),
+      getRemote: s => (s === 'shardX' ? JSON.stringify({hello: 'sX'}) : ''),
+    };
+    const injected = await injectToolbox(session);
+    assert.ok(injected.value.tools.includes('stock'));
+    assert.ok(injected.value.tools.includes('labs'));
+    assert.ok(injected.value.tools.includes('factory'));
+    assert.ok(injected.value.tools.includes('intershard'));
+    assert.ok(injected.value.tools.includes('powerCreeps'));
+
+    const stockRes = await session.run('__sa.t.stock()');
+    assert.equal(stockRes.value.totals.energy, 12000);
+    const isRes = await session.run('__sa.t.intershard(["shard2","shardX"])');
+    assert.deepEqual(isRes.value.local, {hello: 's2'});
+    assert.deepEqual(isRes.value.remote.shardX, {hello: 'sX'});
+    const pcRes = await session.run('__sa.t.powerCreeps()');
+    assert.equal(pcRes.value[0].name, 'op1');
+  }
+
   console.log('临时工具空间与收件箱测试通过');
 })();

@@ -134,4 +134,21 @@ assert.equal(finalChunkParsed.kind, 'j');
 assert.equal(finalChunkParsed.value, 'line_0\nline_39\n');
 assert.equal(chunkCtx.__sa_b[bufId], undefined);
 
+// --arg 传参绑定：支持 JSON 值、字符串值、多语句及标识符校验。
+const {bindExpressionArgs, parseArgEntry} = require('../src/api/console-protocol');
+assert.deepEqual(parseArgEntry('room=E48N32'), ['room', 'E48N32']);
+assert.deepEqual(parseArgEntry('limit=5'), ['limit', 5]);
+assert.deepEqual(parseArgEntry('flags=["a","b"]'), ['flags', ['a', 'b']]);
+assert.throws(() => parseArgEntry('bad'), /--arg 格式必须是 名=值/);
+assert.throws(() => parseArgEntry('123=abc'), /合法 JS 标识符/);
+assert.throws(() => parseArgEntry('return=1'), /合法 JS 标识符/);
+
+const argCtx = {Game: {time: 700}};
+argCtx.global = argCtx;
+vm.createContext(argCtx);
+const argDriver = vm.runInContext('(function(code){return "" + eval(code);})', argCtx);
+const boundExpr = bindExpressionArgs('const res = room + ":" + (limit * 2); res', ['room=E48N32', 'limit=5']);
+const argOut = argDriver(wrapExpression(boundExpr, 'arg00001'));
+assert.deepEqual(parseResponse(argOut, 'arg00001'), {id: 'arg00001', tick: 700, kind: 'j', value: 'E48N32:10'});
+
 console.log('console 协议测试通过');

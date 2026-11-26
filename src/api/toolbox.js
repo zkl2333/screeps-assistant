@@ -11,7 +11,12 @@ const {
 const DEFAULT_MEMORY_BOOT_KEY = '__sa_boot';
 const DEFAULT_MEMORY_INBOX_PREFIX = '__sa_inbox_';
 const MAX_MEMORY_RELAY_CHARS = 1024 * 1024;
-const DEFAULT_TOOLKIT_VERSION = 1;
+/**
+ * auto 模式下低于此长度优先走纯 global.__sa_b 分片（2~4 次 console POST，额度 360/h），
+ * 避免频繁调用限流极严的 POST /api/user/memory（超限可冷却数小时）。
+ */
+const AUTO_CHUNK_MAX_CHARS = 2500;
+const DEFAULT_TOOLKIT_VERSION = 2;
 
 /**
  * 通用只读辅助工具包（挂载到 global.__sa.t），不依赖任何具体 Bot 框架，不修改 Bot 自身状态。
@@ -20,6 +25,17 @@ const DEFAULT_TOOLKIT_SOURCE = `(function(g){
   var sa = g.__sa || (g.__sa = {});
   sa.v = ${DEFAULT_TOOLKIT_VERSION};
   sa.q = sa.q || [];
+  function sumStore(target, store){
+    if (!store) return;
+    for (var res in store) {
+      var amt = store[res] || 0;
+      if (amt > 0) target[res] = (target[res] || 0) + amt;
+    }
+  }
+  function parseJsonSafe(raw){
+    if (typeof raw !== 'string') return raw;
+    try { return JSON.parse(raw); } catch (e) { return raw; }
+  }
   sa.t = {
     cpu: function(){
       var h = Game.cpu.getHeapStatistics ? Game.cpu.getHeapStatistics() : null;
@@ -75,6 +91,81 @@ const DEFAULT_TOOLKIT_SOURCE = `(function(g){
         hostiles: r.find(FIND_HOSTILE_CREEPS).length
       };
     },
+    stock: function(roomName){
+      var totals = {}, byRoom = {};
+      for (var name in Game.rooms) {
+        if (roomName && name !== roomName) continue;
+        var r = Game.rooms[name];
+        if (!r.controller || !r.controller.my) continue;
+        var rs = {};
+        if (r.storage) sumStore(rs, r.storage.store);
+        if (r.terminal) sumStore(rs, r.terminal.store);
+        var structs = r.find(FIND_MY_STRUCTURES);
+        for (var i = 0; i < structs.length; i++) {
+          var st = structs[i];
+          if (st.structureType === 'lab' || st.structureType === 'factory') sumStore(rs, st.store);
+        }
+        sumStore(totals, rs);
+        byRoom[name] = rs;
+      }
+      return {tick: Game.time, shard: Game.shard ? Game.shard.name : null, totals: totals, byRoom: byRoom};
+    },
+    labs: function(roomName){
+      var r = Game.rooms[roomName];
+      if (!r) return null;
+      return r.find(FIND_MY_STRUCTURES, {filter: function(s){ return s.structureType === 'lab'; }}).map(function(l){
+        return {
+          id: l.id,
+          x: l.pos.x,
+          y: l.pos.y,
+          mineralType: l.mineralType || null,
+          mineralAmount: l.mineralType ? (l.store[l.mineralType] || 0) : 0,
+          energy: l.store ? (l.store.energy || 0) : 0,
+          cooldown: l.cooldown || 0
+        };
+      });
+    },
+    factory: function(roomName){
+      var r = Game.rooms[roomName];
+      if (!r) return null;
+      var f = r.find(FIND_MY_STRUCTURES, {filter: function(s){ return s.structureType === 'factory'; }})[0];
+      if (!f) return null;
+      var store = {};
+      sumStore(store, f.store);
+      return {id: f.id, level: f.level || 0, cooldown: f.cooldown || 0, store: store};
+    },
+    intershard: function(shards){
+      if (typeof InterShardMemory === 'undefined') return null;
+      var list = shards || ['shard0', 'shard1', 'shard2', 'shard3', 'shardX'];
+      var current = Game.shard ? Game.shard.name : null;
+      var out = {shard: current, tick: Game.time, local: parseJsonSafe(InterShardMemory.getLocal()), remote: {}};
+      for (var i = 0; i < list.length; i++) {
+        var s = list[i];
+        if (s === current) continue;
+        try {
+          var v = InterShardMemory.getRemote(s);
+          if (v !== null && v !== undefined && v !== '') out.remote[s] = parseJsonSafe(v);
+        } catch (e) {}
+      }
+      return out;
+    },
+    powerCreeps: function(){
+      var out = [];
+      for (var name in (Game.powerCreeps || {})) {
+        var p = Game.powerCreeps[name];
+        out.push({
+          name: p.name,
+          className: p.className,
+          level: p.level,
+          shard: p.shard || null,
+          room: p.room ? p.room.name : null,
+          ttl: p.ticksToLive || null,
+          spawnCooldownTime: p.spawnCooldownTime || null,
+          powers: p.powers
+        });
+      }
+      return out;
+    },
     creeps: function(filter){
       var list = [];
       for (var name in Game.creeps) {
@@ -117,7 +208,10 @@ function assertSafeKey(key, label = 'key') {
 
 /**
  * 通过临时缓冲执行任意长度的 console 脚本。
- * - transport='auto'（默认）：优先 memory 中转（单次请求），若被 Bot 清理导致 missing Memory.* 则自动降级 chunk。
+ * - transport='auto'（默认）：
+ *   1. 能装进单次 console 包装 → direct；
+ *   2. 中长脚本（<= AUTO_CHUNK_MAX_CHARS）优先走纯 global 分片 chunk，保护限流极严的 POST /api/user/memory；
+ *   3. 超长脚本（> AUTO_CHUNK_MAX_CHARS）走 memory 单次中转；若写入遇 429/错误或被 Bot 清理导致 missing Memory.* 则自动降级 chunk。
  * - transport='memory'：先用 POST /api/user/memory 写入临时键，再用 1 次 console 调用 eval 后立即删除。
  * - transport='chunk'：纯 global 分片拼接，不触碰 Memory。
  */
@@ -146,6 +240,11 @@ async function runLargeConsole(session, code, opts = {}) {
 
   if (transport === 'chunk') return runViaChunk();
 
+  const chunkThreshold = opts.chunkThreshold ?? AUTO_CHUNK_MAX_CHARS;
+  if (transport === 'auto' && code.length <= chunkThreshold) {
+    return runViaChunk();
+  }
+
   if (!session.api || typeof session.api.userMemorySet !== 'function') {
     if (transport === 'auto') return runViaChunk();
     throw new Error('memory 中转模式需要 session.api.userMemorySet 方法');
@@ -156,7 +255,13 @@ async function runLargeConsole(session, code, opts = {}) {
 
   const memoryKey = opts.memoryKey || `${DEFAULT_MEMORY_BOOT_KEY}_${createRequestId()}`;
   assertSafeKey(memoryKey, 'memoryKey');
-  await session.api.userMemorySet(memoryKey, code, session.shard);
+  try {
+    await session.api.userMemorySet(memoryKey, code, session.shard);
+  } catch (error) {
+    // auto 模式下 POST /api/user/memory 触发 429 或写入失败时，自动降级为纯 global chunk 分片。
+    if (transport === 'auto') return runViaChunk();
+    throw error;
+  }
   const bootstrap = buildRelayBootstrapExpression(memoryKey);
   try {
     const res = await session.run(bootstrap, {timeoutMs: opts.timeoutMs, retries: opts.retries ?? 0});
@@ -234,6 +339,7 @@ async function clearToolbox(session, opts = {}) {
 }
 
 module.exports = {
+  AUTO_CHUNK_MAX_CHARS,
   DEFAULT_MEMORY_BOOT_KEY,
   DEFAULT_MEMORY_INBOX_PREFIX,
   DEFAULT_TOOLKIT_SOURCE,
