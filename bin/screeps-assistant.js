@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 
-const {resolveTarget} = require('../src/api/client');
+const {context, resolveShards, resolveTarget} = require('../src/api/client');
+const {decodeMemoryValue} = require('../src/api/queries');
 const logs = require('../src/api/logs');
 const {COMMAND_BY_NAME, flagName} = require('../src/commands');
 const {
@@ -11,6 +12,7 @@ const {
 } = require('../src/api/console');
 const {
   assertExpressionSize,
+  bindExpressionArgs,
   unwrapValue,
   wrapExpression,
 } = require('../src/api/console-protocol');
@@ -143,10 +145,39 @@ function interruptibleSleep(getInterrupted) {
   };
 }
 
-async function runCliConsole(args, expression) {
+async function runCliConsole(args, rawExpression) {
+  const expression = bindExpressionArgs(rawExpression, args.arg);
   const config = validateConsoleOptions(args);
   if (config.raw || config.repeat !== undefined) assertConsoleExpressionSize(expression, config.raw);
   const opts = options(args);
+  const multiShard = Boolean(args['all-shards']) || args.shard === 'all' || (typeof args.shard === 'string' && args.shard.includes(','));
+
+  if (multiShard) {
+    if (config.repeat !== undefined) throw new Error('多 shard console 不支持与 --repeat 同用');
+    const {shards} = resolveShards({target: opts.target, shard: opts.shard, allShards: Boolean(args['all-shards'])});
+    const out = {};
+    for (const shard of shards) {
+      const session = await openConsoleSession({...opts, shard});
+      try {
+        const result = config.raw
+          ? await session.run(expression, {timeoutMs: config.timeoutMs, retries: 0, raw: true})
+          : await runLargeConsole(session, expression, {
+            transport: config.transport,
+            timeoutMs: config.timeoutMs,
+            retries: config.retries,
+          });
+        const value = result.kind === 'raw' ? result.value : unwrapValue(result.value);
+        out[shard] = args.envelope && result.kind !== 'raw' ? consoleEnvelope(result, value) : value;
+      } catch (error) {
+        out[shard] = {error: error?.message || String(error)};
+      } finally {
+        await session.close();
+      }
+    }
+    printResult(out, args);
+    return;
+  }
+
   if (config.repeat !== undefined) {
     let interrupted = false;
     const onInterrupt = () => {
@@ -325,6 +356,29 @@ async function main() {
     }
     return printResult(entries, args);
   }
+  if (args.command === 'watch') {
+    if (args.stream && ['pick', 'filter', 'fields', 'compact'].some(key => args[key] !== undefined)) {
+      throw new Error('--stream 模式逐行输出 JSONL，不能和 --pick / --filter / --fields / --compact 一起用');
+    }
+    const controller = new AbortController();
+    const interrupt = () => controller.abort();
+    process.once('SIGINT', interrupt);
+    const watchOpts = {...opts, stream: Boolean(args.stream), exec: args.exec};
+    let result;
+    try {
+      result = await command.run(watchOpts, {
+        signal: controller.signal,
+        onEvent: args.stream ? event => console.log(JSON.stringify(event)) : undefined,
+      });
+    } finally {
+      process.off('SIGINT', interrupt);
+    }
+    if (args.stream) {
+      console.error(`watch 结束（${result.reason}）：监听 ${result.elapsedSec} 秒，触发 ${result.count} 条事件`);
+      return;
+    }
+    return printResult(result, args);
+  }
   if (args.command === 'room' && args.ascii && !args.objects) {
     const res = await command.run(opts);
     console.log(`=== ${res.room} (${res.shard} @ ${res.gameTime ?? '?'}) ===`);
@@ -341,7 +395,8 @@ async function main() {
     }
     return;
   }
-  return printResult(await command.run(opts), args);
+  const outputArgs = command.params?.limit ? {...args, skipOutputLimit: true} : args;
+  return printResult(await command.run(opts), outputArgs);
 }
 
 main().catch(error => {

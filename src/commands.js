@@ -16,6 +16,7 @@
 const queries = require('./api/queries');
 const cpu = require('./api/cpu');
 const logs = require('./api/logs');
+const watch = require('./api/watch');
 const {readWorld, scanRooms} = require('./map/query');
 
 const ROOM = {type: 'room', required: true, positional: true, description: '房间名，例如 W1N1'};
@@ -23,11 +24,12 @@ const ROOM = {type: 'room', required: true, positional: true, description: '房�
 const COMMAND_TABLE = [
   {
     name: 'summary',
-    description: '账号、游戏时间、己方房间、分片和代码模块一屏摘要。',
+    description: '账号、游戏时间、己方房间、分片和代码模块一屏摘要（支持 --all-shards 或逗号多 shard）。',
     params: {
       branch: {type: 'string', description: '代码分支覆盖，省略时用目标配置的分支'},
+      allShards: {type: 'boolean', description: '汇总目标服务器全部分片'},
     },
-    run: options => queries.readSummary(options),
+    run: options => queries.getSummary(options),
   },
   {
     name: 'account',
@@ -36,18 +38,32 @@ const COMMAND_TABLE = [
   },
   {
     name: 'rooms',
-    description: '当前分片的己方房间列表。',
+    description: '当前分片（或 --all-shards / 多分片）的己方房间列表。',
+    params: {
+      allShards: {type: 'boolean', description: '汇总目标服务器全部分片'},
+    },
     run: options => queries.listRooms(options),
   },
   {
     name: 'room',
-    description: '房间现场摘要（控制器、建筑、己方和敌方 creep）；objects 为 true 时返回全部原样对象（带 username，不需要视野，不占 console 额度）。',
+    description: '房间现场摘要（控制器、storage/terminal/lab/factory/nuker 详情、建筑与敌我 creep，支持逗号多房间）；objects 为 true 时返回全部原样对象（不需要视野，不占 console 额度）。',
     params: {
       room: ROOM,
       objects: {type: 'boolean', description: '返回全部原样对象，而不是摘要'},
       ascii: {type: 'boolean', description: '输出地形 + 建筑 + 敌我 creep 叠加的 50x50 ASCII 战局图'},
     },
     run: options => (options.objects ? queries.getRoomObjects(options) : queries.getRoom(options)),
+  },
+  {
+    name: 'stock',
+    description: '帝国/分片资源与设施盘点（storage/terminal/lab/factory 全库存，0 console 额度）；省略房间即查分片全部己方房间。',
+    params: {
+      room: {type: 'room', positional: true, description: '可选：单个或逗号分隔房间名；省略查全分片己方房间'},
+      resource: {type: 'string', description: '可选：只看指定资源，多个用逗号分隔（例如 energy,XGH2O,ops）'},
+      boosts: {type: 'boolean', description: '只统计 T1/T2/T3 Boost 化合物'},
+      allShards: {type: 'boolean', description: '跨全部分片汇总'},
+    },
+    run: options => queries.getStock(options),
   },
   {
     name: 'overview',
@@ -68,6 +84,7 @@ const COMMAND_TABLE = [
       tick: {type: 'integer', min: 0, mcpRequired: true, description: '要还原的 tick（处理完该 tick 后的现场）'},
       to: {type: 'integer', min: 0, description: '变化记录的结束 tick，必须大于 tick'},
       changed: {type: 'string', description: '只保留 changes 里含指定键的记录并裁剪 changes（逗号分隔，例如 hits,store），需配合 to 使用'},
+      bestEffort: {type: 'boolean', description: '容错模式：自动截断未落盘的最新块并跳过缺失 404 块'},
     },
     run: options => queries.getRoomHistory(options),
   },
@@ -103,19 +120,47 @@ const COMMAND_TABLE = [
     run: (options, deps) => logs.collectLogs(options, deps),
   },
   {
+    name: 'watch',
+    description: '实时事件订阅与触发器（全走 WebSocket，0 轮询、0 console 额度）：可组合监听房间战局（creep 进出/阵亡/敌情/拆毁/掉血/核弹）、Memory 路径变化、console 日志报错、代码上线、私信与 CPU 告警；命中即刻返回唤醒调用方。',
+    params: {
+      room: {type: 'room', description: '监听的房间名，支持逗号多房（如 E49N36,E48N32），不需要视野'},
+      on: {type: 'string', description: '房间事件类型（逗号分隔）：creep-enter,creep-leave,creep-die,hostile-enter,hostile-cleared,structure-destroyed,damage,low-hp,nuke,controller,all'},
+      memory: {type: 'string', description: '监听的 Memory 路径（逗号多个），例如 missions.loot:E49N34'},
+      until: {type: 'string', description: '配合 memory 使用的值匹配条件，例如 groups.a.phase=engage'},
+      console: {type: 'boolean', description: '订阅 console 日志流'},
+      grep: {type: 'string', description: 'console 日志关键词过滤（不区分大小写，自动开启 console 订阅）'},
+      errors: {type: 'boolean', description: '只看 console 报错（自动开启 console 订阅）'},
+      code: {type: 'boolean', description: '订阅代码部署更新推送（CI 上线瞬间触发）'},
+      messages: {type: 'boolean', description: '订阅游戏内新私信推送'},
+      cpuAbove: {type: 'string', description: '订阅 CPU 频道，单 tick CPU >= 该数值时触发'},
+      match: {type: 'string', description: '事件字段过滤（支持 = != | ^= *= < <= > >=，例如 name^=Assault_|type=spawn）'},
+      hpBelow: {type: 'string', description: 'low-hp 血量阈值：<=1 表示比例（默认 0.5），>1 表示绝对值'},
+      checkInitial: {type: 'boolean', description: '同时检查首帧快照（若目标已在房或条件已满足则立即触发）'},
+      allShards: {type: 'boolean', description: 'console 订阅接收全部分片'},
+      timeout: {type: 'integer', min: 1, max: 7200, mcpMax: 60, description: '等待超时秒数（CLI 支持 15m/1h，默认 300；MCP 封顶 60）'},
+      count: {type: 'integer', min: 1, max: 10000, description: '命中满 N 条事件后退出（默认 1，即单次唤醒触发器）'},
+      cooldown: {type: 'integer', min: 0, max: 3600, description: '同类事件防抖冷却秒数（默认 0）'},
+    },
+    run: (options, deps) => watch.watchEvents(options, deps),
+  },
+  {
     name: 'memory',
-    description: '按路径读 Memory，返回解码后的值；省略路径读整个 Memory。',
+    description: '按路径读 Memory，返回解码后的值；省略路径读整个 Memory（支持 --stats 占量统计与多分片）。',
     params: {
       path: {type: 'string', positional: true, mcpRequired: true, description: 'Memory 路径，例如 rooms.W1N1'},
       stats: {type: 'boolean', description: '统计各子键 JSON 字节占用排行（外部计算，0 游戏内 CPU）'},
+      allShards: {type: 'boolean', description: '汇总目标服务器全部分片'},
     },
     run: options => queries.getMemory(options),
   },
   {
     name: 'segment',
-    description: '读 Memory Segment。',
+    description: '读 Memory Segment（默认自动 JSON 解码，支持 --stats 体积占比与多分片）。',
     params: {
-      id: {type: 'string', required: true, description: 'Segment ID，多个用逗号分隔，例如 0,1'},
+      id: {type: 'string', required: true, description: 'Segment ID，多个用逗号分隔，例如 0,1 或 99'},
+      raw: {type: 'boolean', description: '保持原始字符串，不自动 JSON.parse'},
+      stats: {type: 'boolean', description: '附带各 Segment 字节大小与 100KB 上限占比'},
+      allShards: {type: 'boolean', description: '汇总目标服务器全部分片'},
     },
     run: options => queries.getSegment(options),
   },
@@ -130,11 +175,12 @@ const COMMAND_TABLE = [
   },
   {
     name: 'market',
-    description: '市场查询：默认返回己方挂单；传 resource 看单品盘口摘要与近期成交；传 index 看全服活跃资源。',
+    description: '市场查询：默认返回己方挂单；传 resource（支持逗号多品）看盘口摘要与近期成交；传 index 看全服活跃资源。',
     params: {
-      resource: {type: 'string', description: '资源名，例如 energy、X、ops、pixel'},
+      resource: {type: 'string', description: '资源名，支持逗号多个，例如 energy,X,ops,pixel'},
       index: {type: 'boolean', description: '只看当前分片有挂单的资源种类与挂单数'},
       limit: {type: 'integer', min: 1, max: 50, description: '买卖盘各展示前几档，默认 5'},
+      allShards: {type: 'boolean', description: '汇总目标服务器全部分片'},
     },
     run: options => queries.getMarketOrders(options),
   },
@@ -217,7 +263,10 @@ const COMMAND_TABLE = [
   },
   {
     name: 'status',
-    description: '检查目标和本地凭证配置是否可用；不联网，不返回凭证内容。',
+    description: '检查目标和本地凭证配置是否可用；不联网，不返回凭证内容；传 ping 时联网诊断连通性与 tick 推进。',
+    params: {
+      ping: {type: 'boolean', description: '联网检查 /api/version、鉴权与 tick 是否推进'},
+    },
     run: options => queries.getStatus(options),
   },
 ];

@@ -49,9 +49,13 @@ const {COMMAND_TABLE} = require('../src/commands');
     }
 
     const byName = Object.fromEntries(tools.map(tool => [tool.name, tool]));
-    // 输出选项是两边共用的，每个查询工具都带。
-    for (const name of ['screeps_room', 'screeps_memory', 'screeps_overview']) {
-      for (const key of ['pick', 'filter', 'fields']) assert.ok(byName[name].inputSchema.properties[key], `${name} 缺少 ${key}`);
+    // 输出选项是两边共用的，每个查询工具都带（含新增的 limit）。
+    for (const name of ['screeps_room', 'screeps_memory', 'screeps_overview', 'screeps_stock']) {
+      for (const key of ['pick', 'filter', 'fields', 'limit']) assert.ok(byName[name].inputSchema.properties[key], `${name} 缺少 ${key}`);
+    }
+    // screeps_console 也对齐 args、allShards、transport 与输出裁剪选项。
+    for (const key of ['args', 'allShards', 'transport', 'pick', 'filter', 'fields', 'limit']) {
+      assert.ok(byName.screeps_console.inputSchema.properties[key], `screeps_console 缺少 ${key}`);
     }
 
     // 命令表里的参数键原样成为 MCP 参数名（camelCase），一个都不能少。
@@ -62,8 +66,12 @@ const {COMMAND_TABLE} = require('../src/commands');
       }
     }
 
-    // logs 在 MCP 里封顶 60 秒：阻塞式调用不能占太久。
+    // logs、cpu 和 watch 在 MCP 里封顶 60 秒：阻塞式调用不能占太久。
     assert.equal(byName.screeps_logs.inputSchema.properties.duration.maximum, 60);
+    assert.equal(byName.screeps_cpu.inputSchema.properties.duration.maximum, 60);
+    assert.equal(byName.screeps_watch.inputSchema.properties.timeout.maximum, 60);
+    // screeps_inbox 与 CLI 对齐 list / push / flush。
+    assert.deepEqual(byName.screeps_inbox.inputSchema.properties.action.enum, ['list', 'push', 'flush']);
     // 必填参数在 MCP 里显式声明；房间名有格式约束。
     assert.deepEqual(byName.screeps_memory.inputSchema.required, ['path']);
     assert.deepEqual(byName.screeps_history.inputSchema.required, ['tick']);
