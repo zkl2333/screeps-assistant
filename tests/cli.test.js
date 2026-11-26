@@ -155,4 +155,38 @@ assert.deepEqual(commandArgs(['inbox', 'flush', '--target', 'main']), {
   _: ['flush'], target: 'main', command: 'inbox',
 });
 
+// 别名容错（--server / --eval / --expression）、可重复 --arg、未知参数纠错提示。
+assert.deepEqual(parseArgs(['console', '--server', 'ptr', '--eval', 'Game.time']), {
+  _: [], target: 'ptr', expr: 'Game.time', command: 'console',
+});
+assert.deepEqual(parseArgs(['console', '--arg', 'room=E48N32', '--arg', 'limit=5', '--expression', 'room']), {
+  _: [], arg: ['room=E48N32', 'limit=5'], expr: 'room', command: 'console',
+});
+assert.throws(() => parseArgs(['summary', '--traget', 'main']), /未知参数：--traget.*你是不是想用 --target/);
+
+// 增强输出管道：--filter 支持 | 多值 OR、^= 前缀、*= 包含、数值比较；--pick 多路径；--fields 普通对象；--limit 截断。
+const objects = [
+  {type: 'creep', name: 'Assault_1a', hits: 4500},
+  {type: 'creep', name: 'Mule_2b', hits: 800},
+  {type: 'tower', name: null, hits: 3000},
+  {type: 'spawn', name: 'Spawn1', hits: 5000},
+];
+assert.equal(applyOutputOptions(objects, {filter: 'type=spawn|tower'}).length, 2);
+assert.equal(applyOutputOptions(objects, {filter: 'type!=spawn|tower'}).length, 2);
+assert.deepEqual(applyOutputOptions(objects, {filter: 'name^=Assault_'}).map(x => x.name), ['Assault_1a']);
+assert.deepEqual(applyOutputOptions(objects, {filter: 'name*=mule'}).map(x => x.name), ['Mule_2b']);
+assert.deepEqual(applyOutputOptions(objects, {filter: 'hits<4000,hits>=1000'}).map(x => x.type), ['tower']);
+assert.equal(applyOutputOptions(objects, {limit: '2'}).length, 2);
+assert.deepEqual(applyOutputOptions({a: {x: 1}, b: {x: 2}, c: {x: 3}}, {limit: 2}), {a: {x: 1}, b: {x: 2}});
+
+const singleObj = {target: 'main', shard: 'shardX', summary: {rcl: 8, storageEnergy: 500000}};
+assert.deepEqual(applyOutputOptions(singleObj, {fields: 'target,summary.rcl'}), {target: 'main', 'summary.rcl': 8});
+assert.deepEqual(applyOutputOptions(singleObj, {pick: 'target,summary.rcl'}), {target: 'main', 'summary.rcl': 8});
+assert.throws(() => applyOutputOptions(singleObj, {pick: 'nope1,nope2'}), /--pick 路径不存在/);
+
+// helpText 自动包含命令表所有命令（不再漏列新命令）。
+for (const cmd of ['stock', 'incident', 'cpu', 'pvp', 'nukes', 'money', 'player']) {
+  assert.match(helpText(), new RegExp(`\\b${cmd}\\b`), `helpText 应包含 ${cmd}`);
+}
+
 })().then(() => console.log('CLI 参数与输出测试通过'));

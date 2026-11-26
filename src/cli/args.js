@@ -3,25 +3,62 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {Buffer} = require('node:buffer');
-const {COMMAND_TABLE, tableFlags} = require('../commands');
+const {COMMAND_TABLE, flagName, tableFlags} = require('../commands');
 
 // 查询命令及其参数来自命令表；这里只补 console、tools、inbox、help 和 CLI 独有的 flag。
 const COMMANDS = [...COMMAND_TABLE.map(command => command.name), 'console', 'tools', 'inbox', 'help'];
 const TABLE_FLAGS = tableFlags();
 const BOOLEAN_FLAGS = new Set([
   ...TABLE_FLAGS.booleans,
-  'compact', 'help', // 通用
-  'raw', 'relay', 'envelope', // console
+  'compact', 'help', 'all-shards', // 通用
+  'raw', 'relay', 'envelope', // console / segment
   'ascii', 'text', // map / logs 的纯文本输出
+  'stream', // watch 流式输出
 ]);
 const VALUE_FLAGS = new Set([
   ...TABLE_FLAGS.values,
-  'target', 'shard', 'account', 'pick', 'filter', 'fields', // 通用
-  'expr', 'file', 'timeout', 'retry', 'repeat', 'times', 'transport', // console / tools / inbox
+  'target', 'shard', 'account', 'pick', 'filter', 'fields', 'limit', // 通用
+  'expr', 'file', 'arg', 'timeout', 'retry', 'repeat', 'times', 'transport', // console / tools / inbox
   'id', // inbox
+  'exec', // watch 事件回调命令
 ]);
+/** 常见直觉别名，自动归一化到正式 flag，减少参数记错导致的无谓失败。 */
+const FLAG_ALIASES = Object.freeze({
+  server: 'target',
+  eval: 'expr',
+  expression: 'expr',
+});
+const REPEATABLE_FLAGS = new Set(['arg']);
 const PROBES_DIR = path.join(__dirname, '..', '..', 'probes');
 const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, ...VALUE_FLAGS]);
+
+function editDistance(a, b) {
+  const dp = Array.from({length: a.length + 1}, (_, i) => i);
+  for (let j = 1; j <= b.length; j += 1) {
+    let prev = dp[0];
+    dp[0] = j;
+    for (let i = 1; i <= a.length; i += 1) {
+      const tmp = dp[i];
+      dp[i] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, dp[i], dp[i - 1]);
+      prev = tmp;
+    }
+  }
+  return dp[a.length];
+}
+
+function suggestFlag(unknown) {
+  let best = null;
+  let bestDist = 3;
+  for (const flag of KNOWN_FLAGS) {
+    if (flag.startsWith(unknown) || unknown.startsWith(flag)) return flag;
+    const dist = editDistance(unknown, flag);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = flag;
+    }
+  }
+  return best;
+}
 
 /** flag 可出现在任意位置；第一个位置参数是子命令，其余位置参数留给子命令。 */
 function parseArgs(argv = []) {
@@ -40,7 +77,12 @@ function parseArgs(argv = []) {
       key = rawKey.slice(0, at);
       value = rawKey.slice(at + 1);
     }
-    if (!KNOWN_FLAGS.has(key)) throw new Error(`未知参数：--${key}。收到的参数：${JSON.stringify(argv)}`);
+    const canonical = FLAG_ALIASES[key] || key;
+    if (!KNOWN_FLAGS.has(canonical)) {
+      const hint = suggestFlag(key);
+      throw new Error(`未知参数：--${key}。收到的参数：${JSON.stringify(argv)}${hint ? `（你是不是想用 --${hint}？）` : ''}`);
+    }
+    key = canonical;
     if (BOOLEAN_FLAGS.has(key)) {
       if (rawKey.includes('=')) {
         if (value !== 'true' && value !== 'false') throw new Error(`布尔参数只支持 true/false：--${key}=${value}`);
@@ -54,7 +96,12 @@ function parseArgs(argv = []) {
       if (value === undefined || value.startsWith('--')) throw new Error(`参数缺少值：--${key}`);
       i += 1;
     }
-    args[key] = value;
+    if (REPEATABLE_FLAGS.has(key)) {
+      if (!Array.isArray(args[key])) args[key] = [];
+      args[key].push(value);
+    } else {
+      args[key] = value;
+    }
   }
   const [command = 'summary', ...rest] = args._;
   return {...args, command, _: rest};
@@ -141,59 +188,84 @@ function parseInteger(value, name, {min, max, fallback} = {}) {
   return parsed;
 }
 
+const POSITIONAL_PLACEHOLDER = {
+  room: '<房间>',
+  path: '[路径]',
+  username: '<用户名>',
+  respondent: '[用户名|id]',
+};
+
+const COMMAND_EXTRA_HELP = {
+  logs: '听 bot 的 console 日志（实时流，没有历史）：--duration <秒，默认 30，最多 600，支持 10s/2m>，--grep <关键词>，--errors 只看报错，--all-shards，--limit <行数，默认 200>，--text 一行一条',
+};
+
+function formatCommandLine(command) {
+  const params = Object.entries(command.params || {});
+  const pos = params.find(([, p]) => p.positional);
+  const sig = pos
+    ? `${command.name} ${POSITIONAL_PLACEHOLDER[pos[0]] || (pos[1].required ? `<${pos[0]}>` : `[${pos[0]}]`)}${command.name === 'segment' ? '' : ''}`
+    : command.name;
+  const label = sig.padEnd(24, ' ');
+  if (COMMAND_EXTRA_HELP[command.name]) return `  ${label} ${COMMAND_EXTRA_HELP[command.name]}`;
+  const flags = params
+    .filter(([k, p]) => !p.positional || k === 'room')
+    .filter(([, p]) => !p.positional)
+    .map(([k]) => `--${flagName(k)}`);
+  const flagSuffix = flags.length ? `（${flags.join(' ')}）` : '';
+  return `  ${label} ${command.description}${flagSuffix}`;
+}
+
 function helpText() {
+  const commandLines = [
+    ...COMMAND_TABLE.map(formatCommandLine),
+    '  console                  执行游戏内表达式（支持 --arg 名=值、超长自动分片/中转，见下）',
+    '  tools                    临时工具空间：inject | status | clear',
+    '  inbox                    临时收件箱：push | list | flush',
+  ].join('\n');
+
   return `Screeps Assistant
 
 用法：node bin/screeps-assistant.js <命令> [位置参数] [--参数]
 
-命令：
-  summary                  账号、游戏时间、房间、分片和代码模块摘要
-  account                  账号概况（含 GCL 阶梯）
-  rooms                    当前分片的己方房间
-  room <房间>              房间现场摘要；--objects 输出全部对象（不需要视野、不占 console 额度）
-  overview <房间>          官方房间统计；--interval 8|180|1440（每格分钟数），--stat 只看一项，--tick 只看覆盖该 tick 的那一格
-  history <房间>           房间回放：--tick <tick> 还原那个 tick 的房间现场；再加 --to <tick> 列出这段 tick 内每个对象的变化（最多 1000 tick）
-  logs                     听 bot 的 console 日志（实时流，没有历史）：--duration <秒，默认 30，最多 600>，--grep <关键词>，--errors 只看报错，--all-shards，--limit <行数，默认 200>，--text 一行一条
-  memory [路径]            按路径读 Memory；省略路径读整个 Memory
-  segment --id <id,...>    读 Memory Segment
-  console                  执行游戏内表达式（见下）
-  tools                    临时工具空间：inject | status | clear
-  inbox                    临时收件箱：push | list | flush
-  code [--branch <分支>]   线上代码模块列表
-  market / messages        己方市场挂单 / 消息索引（messages <用户名> 读该对话全文）
-  shards / world           分片信息 / 环境概况
-  map                      地图分析：--room、--rooms、--around --radius 或 --all
-  status                   检查目标和本地凭证配置（不联网）
+命令（与 MCP 工具 screeps_<命令> 自动同源）：
+${commandLines}
 
 通用参数：
-  --target <main|ptr|season|pserver，或 .screeps.yml 里的其他服务器>
-  --shard <分片>   --account <账号>   --compact
-  --pick <路径>            先取结果的子路径，例如 overview 的 --pick stats
-  --filter <路径=值,...>   --fields <路径,...>   作用于数组或对象集合（有 --pick 时作用于取出的部分）
+  --target <main|ptr|season|pserver，或 .screeps.yml 里的其他服务器>（别名 --server）
+  --shard <分片，支持逗号多选如 shard2,shard3,shardX 或 all>   --all-shards   --account <账号>   --compact
+  --pick <路径,...>        先取结果子路径（支持逗号多路径，例如 summary.controller,summary.spawns）
+  --filter <条件,...>      过滤数组或对象集合：=、!=（支持 | 多值 OR）、^= 前缀、*= 包含、< <= > >= 数值比较
+  --fields <路径,...>      保留指定字段（支持数组、对象集合和普通对象）   --limit <N> 截断集合前 N 项
 
 房间回放（官方 room-history：任意房间都能查，不需要视野；约 19 天内、每 100 tick 一块，正在进行的这一块要等写完）：
   node bin/screeps-assistant.js history W1N1 --tick 77949750 --filter type=creep --fields name,username,x,y,hits
   node bin/screeps-assistant.js history W1N1 --tick 77949750 --to 77949780 --filter type=creep --fields tick,op,name,x,y,changes
+  node bin/screeps-assistant.js history W1N1 --tick 77949750 --to 77949950 --changed hits,store --best-effort
 tick N 是处理完第 N 个 tick 后的现场（bot 在 Game.time=N+1 看到的状态）；本 tick 新生成的对象晚一帧出现。
 
 日志（logs：订阅 console 事件流，不发送任何表达式，不占 console 发送额度；查不到过去的日志）：
   node bin/screeps-assistant.js logs --errors --duration 120 --target main --shard shard2
-  node bin/screeps-assistant.js logs --duration 30 --grep spawn --text --target main --shard shard2
+  node bin/screeps-assistant.js logs --duration 30s --grep spawn --text --target main --shard shard2
 tick 是按到达时间估算的（误差约 ±1～2 tick），只有目标分片的行才有；拿到 tick 可以接 history 看那一刻的房间。
 
-console 表达式三选一：位置参数、--expr、--file <路径或 probes/ 下的探针名>；--file - 读 stdin
-  node bin/screeps-assistant.js console --file my-probe --target main --shard shard2
-  node bin/screeps-assistant.js console --expr "Game.time" --retry 2 --timeout 15000
+实时订阅与事件唤醒（watch：全走 WebSocket，0 轮询、0 console 额度；默认命中即退出，可直接唤醒后台 AI 指挥官）：
+  node bin/screeps-assistant.js watch --room E49N36 --on creep-enter,structure-destroyed,creep-die --match "name^=Assault_|type=spawn" --timeout 15m --shard shardX
+  node bin/screeps-assistant.js watch --memory "missions.loot:E49N34" --check-initial --timeout 20m --shard shardX
+  node bin/screeps-assistant.js watch --room E48N32,E45N33 --on hostile-enter,nuke --console --errors --stream --cooldown 30s --shard shardX
+
+console 表达式三选一：位置参数、--expr（别名 --eval）、--file <路径或 probes/ 下的探针名>；--file - 读 stdin
+  node bin/screeps-assistant.js console --file my-probe --arg room=W1N1 --arg limit=5 --target main --shard shard2
+  node bin/screeps-assistant.js console --expr "Game.time" --retry 2 --timeout 15000 --shard shard2,shard3,shardX
   node bin/screeps-assistant.js console --file - --target main <<'EOF'
   Object.values(Game.creeps).length
 EOF
   node bin/screeps-assistant.js console --file probe.js --envelope              # 带请求 ID、tick 和尝试次数
   node bin/screeps-assistant.js console --file probe.js --repeat 10 --times 10
   node bin/screeps-assistant.js console --file probe.js --raw --retry 0
-  node bin/screeps-assistant.js console --file large.js [--transport memory|chunk] # 超长自动中转
+  node bin/screeps-assistant.js console --file large.js [--transport auto|chunk|memory] # 超长自动分片/中转
 
 临时工具空间与收件箱：
-  node bin/screeps-assistant.js tools inject [--file custom.js] [--transport memory|chunk]
+  node bin/screeps-assistant.js tools inject [--file custom.js] [--transport auto|chunk|memory]
   node bin/screeps-assistant.js tools status | clear
   node bin/screeps-assistant.js inbox push --expr '{"cmd":"ping"}' [--id msg1]
   node bin/screeps-assistant.js inbox list | flush [--expr "items => items.length"]

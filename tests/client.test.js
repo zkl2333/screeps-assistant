@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const {gclProgress, objectSummary, resolveServerConfig, resolveTarget} = require('../src/api/client');
+const {gclProgress, objectSummary, resolveServerConfig, resolveShards, resolveTarget} = require('../src/api/client');
 
 // 内置目标不依赖本机 .screeps.yml：传一个不存在的配置路径。
 const NO_CONFIG = path.join(os.tmpdir(), `screeps-assistant-no-config-${process.pid}.yml`);
@@ -216,5 +216,31 @@ try {
 } finally {
   fs.unlinkSync(badOverrideFile);
 }
+
+// resolveShards：单分片、逗号多分片去重、all / allShards 及非法分片校验。
+assert.deepEqual(resolveShards({target: 'main', shard: 'shard2,shardX,shard2'}, NO_CONFIG).shards, ['shard2', 'shardX']);
+assert.deepEqual(resolveShards({target: 'main', shard: 'all'}, NO_CONFIG).shards, ['shard0', 'shard1', 'shard2', 'shard3', 'shardX']);
+assert.deepEqual(resolveShards({target: 'ptr', allShards: true}, NO_CONFIG).shards, ['shard0', 'shard1', 'shard2', 'shard3']);
+assert.throws(() => resolveShards({target: 'season', shard: 'shardSeason,shard2'}, NO_CONFIG), /不支持分片 shard2/);
+
+// 加深设施摘要：storageStore/terminalStore/labDetails/factoryDetails/nuker/spawningDetails/safeMode。
+const facilityRoom = objectSummary([
+  {type: 'controller', level: 8, x: 10, y: 10, user: 'me', safeMode: 12000, safeModeAvailable: 2},
+  {type: 'spawn', name: 'S1', user: 'me', spawning: {name: 'c1', needTime: 60, spawnTime: 10025}},
+  {type: 'storage', user: 'me', store: {energy: 100000, XGH2O: 5000, H: 0}},
+  {type: 'terminal', user: 'me', store: {energy: 30000, ops: 1200}},
+  {type: 'lab', _id: 'l1', x: 12, y: 13, user: 'me', store: {energy: 2000, XGH2O: 3000}, cooldownTime: 10005},
+  {type: 'factory', _id: 'f1', user: 'me', level: 2, cooldownTime: 10010, store: {battery: 400}},
+  {type: 'nuker', user: 'me', store: {energy: 300000, G: 5000}, cooldownTime: 10500},
+], 'me', {gameTime: 10000});
+assert.deepEqual(facilityRoom.storageStore, {energy: 100000, XGH2O: 5000});
+assert.deepEqual(facilityRoom.terminalStore, {energy: 30000, ops: 1200});
+assert.equal(facilityRoom.spawningDetails[0].remainingTime, 25);
+assert.equal(facilityRoom.labDetails[0].mineralType, 'XGH2O');
+assert.equal(facilityRoom.labDetails[0].cooldown, 5);
+assert.equal(facilityRoom.factoryDetails.level, 2);
+assert.equal(facilityRoom.factoryDetails.cooldown, 10);
+assert.equal(facilityRoom.nuker.G, 5000);
+assert.equal(facilityRoom.controller.safeMode, 2000);
 
 console.log('客户端基础测试通过');

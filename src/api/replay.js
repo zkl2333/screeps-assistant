@@ -196,22 +196,68 @@ function filterChangedRecords(records, changed) {
 
 function replayChanges(chunks, from, to, opts = {}) {
   const keys = parseChangedKeys(opts.changed);
+  const bestEffort = Boolean(opts.bestEffort);
   const byBase = new Map(chunks.map(chunk => [baseOf(chunk), chunk]));
   const startChunk = byBase.get(chunkBase(from));
-  if (!startChunk) throw new Error(`缺少回放块 ${chunkBase(from)}`);
-  let state = replayState(startChunk, from);
+  if (!startChunk && !bestEffort) throw new Error(`缺少回放块 ${chunkBase(from)}`);
+  let state = null;
+  if (startChunk) {
+    try {
+      state = replayState(startChunk, from);
+    } catch (error) {
+      if (!bestEffort) throw error;
+    }
+  }
   const records = [];
   for (let tick = from + 1; tick <= to; tick += 1) {
     const base = chunkBase(tick);
     const chunk = byBase.get(base);
-    if (!chunk) throw new Error(`缺少回放块 ${base}`);
+    if (!chunk) {
+      if (!bestEffort) throw new Error(`缺少回放块 ${base}`);
+      state = null;
+      tick = Math.min(to, base + HISTORY_CHUNK - 1);
+      continue;
+    }
     let snapshot;
     let diff;
-    if (tick === base) {
-      snapshot = structuredClone(startFrame(chunk));
-      diff = diffStates(state, snapshot);
+    if (tick === base || state === null) {
+      let baseFrame;
+      try {
+        baseFrame = startFrame(chunk);
+      } catch (error) {
+        if (!bestEffort) throw error;
+        state = null;
+        tick = Math.min(to, base + HISTORY_CHUNK - 1);
+        continue;
+      }
+      if (tick === base) {
+        snapshot = structuredClone(baseFrame);
+        if (state === null) {
+          state = snapshot;
+          continue;
+        }
+        diff = diffStates(state, snapshot);
+      } else {
+        // 之前缺失导致 state 断开，在当前块重新恢复到 tick-1 或直接以本块起点重同步
+        try {
+          state = replayState(chunk, tick - 1);
+          diff = frameAt(chunk, tick);
+        } catch (error) {
+          if (!bestEffort) throw error;
+          state = null;
+          tick = Math.min(to, base + HISTORY_CHUNK - 1);
+          continue;
+        }
+      }
     } else {
-      diff = frameAt(chunk, tick);
+      try {
+        diff = frameAt(chunk, tick);
+      } catch (error) {
+        if (!bestEffort) throw error;
+        state = null;
+        tick = Math.min(to, base + HISTORY_CHUNK - 1);
+        continue;
+      }
     }
     for (const [id, change] of Object.entries(diff)) {
       // 简述要在改 state 之前取：removed 用消失前的对象，added / changed 用变化后的对象。

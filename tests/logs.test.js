@@ -172,6 +172,8 @@ process.on('exit', () => {
   assert.equal(parseDuration(undefined), DEFAULT_DURATION);
   assert.equal(parseLimit(undefined), DEFAULT_LIMIT);
   assert.equal(parseDuration('30'), 30);
+  assert.equal(parseDuration('10s'), 10);
+  assert.equal(parseDuration('2m'), 120);
   assert.equal(parseDuration(30), 30);
   assert.equal(parseDuration('1'), 1);
   assert.equal(parseDuration(String(MAX_DURATION)), MAX_DURATION);

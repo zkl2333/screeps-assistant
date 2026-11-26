@@ -6,6 +6,9 @@ const {parse} = require('yaml');
 const {ScreepsConfigManager, ScreepsHttpClient} = require('screeps-api');
 
 const CONFIG_FILE = path.join(__dirname, '..', '..', '.screeps.yml');
+const AUTH_CACHE_FILE = path.join(__dirname, '..', '..', '.cache', 'auth-me.json');
+const AUTH_CACHE_TTL_MS = 5 * 60 * 1000;
+const memoryAuthCache = new Map();
 
 const OFFICIAL_SHARDS = Object.freeze(['shard0', 'shard1', 'shard2', 'shard3', 'shardX']);
 
@@ -72,6 +75,27 @@ function resolveTarget({target = 'main', shard} = {}, file = CONFIG_FILE) {
   return {target, config, shard: resolvedShard};
 }
 
+/** 解析单个或多个分片：支持 `allShards: true`、`shard: 'all'` 或逗号分隔 `shard2,shard3,shardX`。 */
+function resolveShards({target = 'main', shard, allShards} = {}, file = CONFIG_FILE) {
+  const config = targetConfig(target, file);
+  if (allShards || shard === 'all') {
+    return {target, config, shards: [...config.shards]};
+  }
+  if (!shard) {
+    return {target, config, shards: [config.defaultShard]};
+  }
+  const parts = String(shard).split(',').map(s => s.trim()).filter(Boolean);
+  if (!parts.length) return {target, config, shards: [config.defaultShard]};
+  const unique = [];
+  for (const name of parts) {
+    if (!config.shards.includes(name)) {
+      throw new Error(`${target} 不支持分片 ${name}。可选：${config.shards.join(', ')}`);
+    }
+    if (!unique.includes(name)) unique.push(name);
+  }
+  return {target, config, shards: unique};
+}
+
 /**
  * 从配置中解析某个服务器下的某个账号，返回 {server, app} 供构造 client。
  * 结构：账号嵌套在服务器下的 accounts 里；服务器块自身的 token 是该服务器默认账号。
@@ -127,10 +151,69 @@ async function openClient(target = 'main', account) {
   return api;
 }
 
+function sanitizeCachedAccount(account) {
+  if (!account || !account._id) return null;
+  return {
+    _id: account._id,
+    username: account.username,
+    cpu: account.cpu,
+    gcl: account.gcl,
+    money: account.money,
+    credits: account.credits,
+    cpuShard: account.cpuShard,
+    resources: account.resources,
+  };
+}
+
+function readDiskAuthCache(cacheKey, now = Date.now()) {
+  const memHit = memoryAuthCache.get(cacheKey);
+  if (memHit && now - memHit.at < AUTH_CACHE_TTL_MS) return memHit.account;
+  try {
+    if (!fs.existsSync(AUTH_CACHE_FILE)) return null;
+    const raw = JSON.parse(fs.readFileSync(AUTH_CACHE_FILE, 'utf8'));
+    const entry = raw?.[cacheKey];
+    if (entry && entry.account && now - Number(entry.at) < AUTH_CACHE_TTL_MS) {
+      memoryAuthCache.set(cacheKey, entry);
+      return entry.account;
+    }
+  } catch {
+    // 缓存不可读时静默回退实时接口
+  }
+  return null;
+}
+
+function writeDiskAuthCache(cacheKey, account, now = Date.now()) {
+  const clean = sanitizeCachedAccount(account);
+  if (!clean) return;
+  const entry = {at: now, account: clean};
+  memoryAuthCache.set(cacheKey, entry);
+  try {
+    fs.mkdirSync(path.dirname(AUTH_CACHE_FILE), {recursive: true});
+    let store = {};
+    if (fs.existsSync(AUTH_CACHE_FILE)) {
+      try {
+        store = JSON.parse(fs.readFileSync(AUTH_CACHE_FILE, 'utf8')) || {};
+      } catch {
+        store = {};
+      }
+    }
+    store[cacheKey] = entry;
+    fs.writeFileSync(AUTH_CACHE_FILE, JSON.stringify(store, null, 2), 'utf8');
+  } catch {
+    // 缓存不可写时不阻塞正常查询
+  }
+}
+
 async function context(options = {}) {
   const resolved = resolveTarget(options);
   const api = await openClient(resolved.target, options.account);
-  const account = await api.authMe();
+  const useCache = !options.freshAccount && process.env.SCREEPS_ASSISTANT_NO_AUTH_CACHE !== '1';
+  const cacheKey = `${resolved.config.server}:${options.account || 'default'}`;
+  let account = useCache ? readDiskAuthCache(cacheKey) : null;
+  if (!account) {
+    account = await api.authMe();
+    writeDiskAuthCache(cacheKey, account);
+  }
   return {...resolved, accountAlias: options.account || null, api, account};
 }
 
@@ -155,6 +238,15 @@ function accountSummary(account) {
   return {id: account?._id, username: account?.username, cpu: account?.cpu, gcl: account?.gcl, gclProgress: gclProgress(account?.gcl), money: account?.money, credits: account?.credits, pixels: account?.resources?.pixel};
 }
 
+function nonEmptyStore(store) {
+  if (!store || typeof store !== 'object') return undefined;
+  const out = {};
+  for (const [k, v] of Object.entries(store)) {
+    if (Number(v) > 0) out[k] = v;
+  }
+  return out;
+}
+
 /**
  * 房间对象摘要。
  *
@@ -170,6 +262,9 @@ function objectSummary(objects, userId, {users = {}, gameTime} = {}) {
   const controller = objects.find(item => item.type === 'controller');
   const storage = owned.find(item => item.type === 'storage');
   const terminal = owned.find(item => item.type === 'terminal');
+  const factory = owned.find(item => item.type === 'factory');
+  const nuker = owned.find(item => item.type === 'nuker');
+  const ownLabsList = owned.filter(item => item.type === 'lab');
   const creeps = objects.filter(item => item.type === 'creep');
   const ttlOf = item => (item.ageTime != null && gameTime != null ? item.ageTime - gameTime : undefined);
   const usernameOf = id => (id == null ? undefined : users[id]?.username);
@@ -201,6 +296,43 @@ function objectSummary(objects, userId, {users = {}, gameTime} = {}) {
   const mineralObj = objects.find(item => item.type === 'mineral');
   const mineral = mineralObj ? {type: mineralObj.mineralType, amount: mineralObj.mineralAmount} : null;
 
+  const spawningDetails = owned
+    .filter(item => item.type === 'spawn' && item.spawning)
+    .map(item => ({
+      spawn: item.name,
+      name: item.spawning.name,
+      needTime: item.spawning.needTime,
+      remainingTime: item.spawning.spawnTime != null && gameTime != null ? Math.max(0, item.spawning.spawnTime - gameTime) : undefined,
+    }));
+
+  const labDetails = ownLabsList.map(l => {
+    const store = nonEmptyStore(l.store) || {};
+    const mineralType = Object.keys(store).find(k => k !== 'energy') || l.mineralType || null;
+    const mineralAmount = mineralType ? (store[mineralType] ?? l.mineralAmount ?? 0) : 0;
+    return {
+      id: l._id,
+      x: l.x,
+      y: l.y,
+      mineralType,
+      mineralAmount,
+      energy: store.energy ?? l.energy ?? 0,
+      cooldown: l.cooldownTime != null && gameTime != null ? Math.max(0, l.cooldownTime - gameTime) : (l.cooldown ?? 0),
+    };
+  });
+
+  const factoryDetails = factory ? {
+    id: factory._id,
+    level: factory.level ?? 0,
+    cooldown: factory.cooldownTime != null && gameTime != null ? Math.max(0, factory.cooldownTime - gameTime) : (factory.cooldown ?? 0),
+    store: nonEmptyStore(factory.store) || {},
+  } : null;
+
+  const nukerDetails = nuker ? {
+    energy: nuker.store?.energy ?? nuker.energy ?? 0,
+    G: nuker.store?.G ?? nuker.ghodium ?? 0,
+    cooldown: nuker.cooldownTime != null && gameTime != null ? Math.max(0, nuker.cooldownTime - gameTime) : undefined,
+  } : null;
+
   return {
     rcl: controller?.level,
     controller: controller ? {
@@ -212,20 +344,28 @@ function objectSummary(objects, userId, {users = {}, gameTime} = {}) {
         ? {...controller.reservation, username: usernameOf(controller.reservation.user)}
         : undefined,
       ticksToDowngrade: controller.downgradeTime != null && gameTime != null ? controller.downgradeTime - gameTime : undefined,
+      safeMode: controller.safeMode != null && gameTime != null ? Math.max(0, controller.safeMode - gameTime) : undefined,
+      safeModeAvailable: controller.safeModeAvailable,
     } : null,
     energyAvailable,
     energyCapacityAvailable,
     spawns: countAll('spawn'),
     ownSpawns: countOwn('spawn'),
     spawning: owned.filter(item => item.type === 'spawn' && item.spawning).map(item => item.spawning.name),
+    spawningDetails,
     storageEnergy: storage?.store?.energy,
+    storageStore: nonEmptyStore(storage?.store),
     terminalEnergy: terminal?.store?.energy,
+    terminalStore: nonEmptyStore(terminal?.store),
     towers: countAll('tower'),
     ownTowers: countOwn('tower'),
     labs: countAll('lab'),
     ownLabs: countOwn('lab'),
+    labDetails,
     factories: countAll('factory'),
     ownFactories: countOwn('factory'),
+    factoryDetails,
+    nuker: nukerDetails,
     constructionSites: objects.filter(item => item.type === 'constructionSite' && item.user === userId).length,
     sources,
     mineral,
@@ -255,11 +395,11 @@ function objectSummary(objects, userId, {users = {}, gameTime} = {}) {
 }
 
 async function readSummary(options = {}) {
-  const {target, config, shard, api, account} = await context(options);
+  const {target, config, shard, api, account} = await context({...options, freshAccount: true});
   // 代码分支可用命令表里的 branch 覆盖（查小号的 default 分支时用）；codeBranch 是旧调用方的写法，一并认。
   const codeBranch = options.branch || options.codeBranch || config.codeBranch;
   const [time, rooms, shards, code] = await Promise.all([api.gameTime(shard), api.userRooms(account._id, shard), api.gameShardsInfo(), api.userCodeGet(codeBranch)]);
   return {target, server: config.server, app: config.app, shard, codeBranch, account: accountSummary(account), gameTime: time?.time, rooms: rooms?.shards?.[shard] || [], shardInfo: shards?.shards?.find(item => item.name === shard) || null, codeModules: Object.keys(code?.modules || {})};
 }
 
-module.exports = {TARGETS, accountSummary, context, gclProgress, objectSummary, openClient, readSummary, resolveServerConfig, resolveTarget, targetConfig};
+module.exports = {TARGETS, accountSummary, context, gclProgress, objectSummary, openClient, readSummary, resolveServerConfig, resolveShards, resolveTarget, targetConfig};

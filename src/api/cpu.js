@@ -7,6 +7,19 @@ const MAX_DURATION = 600;
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 5000;
 
+function parseDurationInt(value, fallback, max, name) {
+  if (value === undefined) return fallback;
+  let parsed = value;
+  if (typeof value === 'string') {
+    const match = value.trim().match(/^(\d+)([sm]?)$/i);
+    parsed = match ? (match[2].toLowerCase() === 'm' ? Number(match[1]) * 60 : Number(match[1])) : NaN;
+  }
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > max) {
+    throw new Error(`${name} 必须是 1～${max} 的整数，收到：${value}`);
+  }
+  return parsed;
+}
+
 function parseBoundedInt(value, fallback, max, name) {
   if (value === undefined) return fallback;
   const parsed = typeof value === 'string' ? (/^\d+$/.test(value) ? Number(value) : NaN) : value;
@@ -53,7 +66,7 @@ function summarizeCpuSamples(samples = [], cpuLimit) {
 
 /** 订阅 WebSocket cpu 频道做外部无侵入采样（0 游戏内 CPU）。 */
 async function collectCpu(options = {}, deps = {}) {
-  const durationSeconds = parseBoundedInt(options.duration, DEFAULT_DURATION, MAX_DURATION, '--duration');
+  const durationSeconds = parseDurationInt(options.duration, DEFAULT_DURATION, MAX_DURATION, '--duration');
   const limit = parseBoundedInt(options.limit, DEFAULT_LIMIT, MAX_LIMIT, '--limit');
   const {api, account, target, shard} = await (deps.context || client.context)(options);
   const samples = [];

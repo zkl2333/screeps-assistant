@@ -34,8 +34,24 @@ function parseBoundedInteger(value, fallback, max, describe) {
   return parsed;
 }
 
+function parseDurationSeconds(value) {
+  if (typeof value === 'number') return value;
+  if (typeof value !== 'string') return NaN;
+  const trimmed = value.trim();
+  const match = trimmed.match(/^(\d+)([sm]?)$/i);
+  if (!match) return NaN;
+  const num = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  return unit === 'm' ? num * 60 : num;
+}
+
 function parseDuration(value) {
-  return parseBoundedInteger(value, DEFAULT_DURATION, MAX_DURATION, received => `--duration 必须是 1～${MAX_DURATION} 的整数（秒），收到：${received}`);
+  if (value === undefined) return DEFAULT_DURATION;
+  const parsed = parseDurationSeconds(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_DURATION) {
+    throw new Error(`--duration 必须是 1～${MAX_DURATION} 的整数（秒），收到：${value}`);
+  }
+  return parsed;
 }
 
 function parseLimit(value) {

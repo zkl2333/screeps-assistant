@@ -747,6 +747,124 @@ const {applyOutputOptions} = require('../src/cli/output');
         require('node:fs').rmSync(tmpDir, {recursive: true, force: true});
       }
     }
+
+    // segment 自动 JSON 解码、--raw 保留原文与 --stats 体积统计
+    {
+      client.context = mockContext({
+        userMemorySegmentGet: async () => ({ok: 1, data: JSON.stringify({tick: 123, cpu: {used: 12.5}})}),
+      });
+      const decoded = await queries.getSegment({target: 'main', shard: 'shard2', id: '99', stats: true});
+      assert.deepEqual(decoded.segments.data, {tick: 123, cpu: {used: 12.5}});
+      assert.ok(decoded.stats.data.bytes > 10);
+      assert.equal(decoded.stats.data.limitBytes, queries.SEGMENT_LIMIT_BYTES);
+
+      const raw = await queries.getSegment({target: 'main', shard: 'shard2', id: '99', raw: true});
+      assert.equal(typeof raw.segments.data, 'string');
+    }
+
+    // room 逗号多房间 & market 逗号多资源
+    {
+      client.context = mockContext({
+        gameTime: async () => ({ok: 1, time: 5000}),
+        gameRoomObjects: async room => ({
+          objects: [{type: 'controller', level: room === 'E48N32' ? 8 : 6, x: 10, y: 10, user: 'u1'}],
+          users: {},
+        }),
+        gameMarketOrders: async res => ({
+          list: [{_id: `s_${res}`, type: 'sell', price: res === 'energy' ? 20 : 500, remainingAmount: 1000, roomName: 'E1N1'}],
+        }),
+        gameMarketStats: async () => ({stats: []}),
+      });
+      const multiRoom = await queries.getRoom({target: 'main', shard: 'shardX', room: 'E48N32,E45N33'});
+      assert.equal(multiRoom.rooms.E48N32.summary.rcl, 8);
+      assert.equal(multiRoom.rooms.E45N33.summary.rcl, 6);
+
+      const multiQuote = await queries.getMarketOrders({target: 'main', shard: 'shardX', resource: 'energy,ops'});
+      assert.equal(multiQuote.quotes.energy.bestSell, 20);
+      assert.equal(multiQuote.quotes.ops.bestSell, 500);
+    }
+
+    // stock 帝国/分片资源盘点（含 --boosts / --resource 与多分片汇总）
+    {
+      client.context = mockContext({
+        userRooms: async (_, shard) => ({shards: {[shard]: shard === 'shard2' ? ['W1N1'] : ['E48N32']}}),
+        gameRoomObjects: async room => ({
+          objects: room === 'W1N1'
+            ? [
+              {type: 'controller', level: 8, user: 'u1'},
+              {type: 'storage', user: 'u1', store: {energy: 50000, XGH2O: 3000}},
+              {type: 'lab', _id: 'l1', user: 'u1', store: {XGH2O: 1000, energy: 2000}},
+            ]
+            : [
+              {type: 'controller', level: 7, user: 'u1'},
+              {type: 'terminal', user: 'u1', store: {energy: 20000, XKHO2: 1500}},
+              {type: 'factory', user: 'u1', level: 1, store: {battery: 500}},
+            ],
+        }),
+      });
+      const s2Stock = await queries.getStock({target: 'main', shard: 'shard2'});
+      assert.equal(s2Stock.totals.energy, 52000);
+      assert.equal(s2Stock.totals.XGH2O, 4000);
+
+      const boostsOnly = await queries.getStock({target: 'main', shard: 'shard2,shardX', boosts: true});
+      assert.deepEqual(boostsOnly.totals, {XGH2O: 4000, XKHO2: 1500});
+      assert.equal(boostsOnly.shards.shardX.rooms.E48N32.factory.level, 1);
+    }
+
+    // history --best-effort：自动截断未写完最新块并跳过缺失 404 块
+    {
+      const snap = {c1: {_id: 'c1', type: 'creep', name: 'a', user: 'me', x: 5, y: 5, hits: 100}};
+      const makeChunk = (b, overrides = {}) => {
+        const ticks = {[b]: snap};
+        for (let t = b + 1; t < b + 100; t += 1) ticks[t] = overrides[t] || {};
+        return {base: b, ticks};
+      };
+      client.context = mockContext({
+        gameTime: async () => ({ok: 1, time: 10350}),
+        history: async (room, base) => {
+          if (base === 10100) {
+            const err = new Error('Not found');
+            err.status = 404;
+            throw err;
+          }
+          if (base >= 10300) {
+            const err = new Error('Not found');
+            err.status = 404;
+            throw err;
+          }
+          return makeChunk(base, base === 10200 ? {10210: {c1: {hits: 50}}} : {});
+        },
+        userFindById: async () => ({user: {username: 'Me'}}),
+      });
+      const evs = await queries.getRoomHistory({target: 'main', shard: 'shard2', room: 'W1N1', tick: 10050, to: 10320, bestEffort: true});
+      assert.equal(evs.length, 1);
+      assert.equal(evs[0].tick, 10210);
+      assert.equal(evs[0].changes.hits, 50);
+    }
+
+    // status --ping：联网诊断 version / auth / gameTime 推进
+    {
+      const origOpen = client.openClient;
+      const origResolveServer = client.resolveServerConfig;
+      let calls = 0;
+      client.resolveServerConfig = () => ({server: {url: 'http://127.0.0.1:21025/', email: 'a@b', password: 'secret'}});
+      client.openClient = async () => ({
+        version: async () => ({protocol: 14, useNativeAuth: false}),
+        authMe: async () => ({_id: 'u1', username: 'BotUser'}),
+        gameTime: async () => ({time: 100 + (++calls)}),
+      });
+      try {
+        const res = await queries.getStatus({target: 'pserver', ping: true, pingWaitMs: 0});
+        assert.equal(res.ok, true);
+        assert.equal(res.diagnostics.authMode, 'email/password');
+        assert.equal(res.diagnostics.version.protocol, 14);
+        assert.equal(res.diagnostics.auth.username, 'BotUser');
+        assert.equal(res.diagnostics.gameTime.advancing, true);
+      } finally {
+        client.openClient = origOpen;
+        client.resolveServerConfig = origResolveServer;
+      }
+    }
   } finally {
     client.context = originalContext;
     client.resolveTarget = originalResolveTarget;
